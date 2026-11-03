@@ -1,0 +1,238 @@
+// Tangent Smart Manager — Core Database Schema
+// Phase 02 (System Foundation) + Phase 03 (Auth & Administration) scope.
+// See DECISIONS.md D003/D004/D005 for the reasoning behind money representation
+// and multi-tenant isolation. Accounting/Goat Farm/Land domains beyond the
+// minimal stubs here belong to their own phases (05/06/07) and are not yet built.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Tenancy
+// ---------------------------------------------------------------------------
+
+/// A client/business tenant. Every tenant-scoped record carries a workspaceId
+/// so isolation can be enforced at the query layer (see DECISIONS.md D005).
+model Workspace {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users        WorkspaceMembership[]
+  auditLogs    AuditLog[]
+  accounts     Account[]
+  journalEntries JournalEntry[]
+  animals      Animal[]
+
+  @@map("workspaces")
+}
+
+// ---------------------------------------------------------------------------
+// Identity & Access
+// ---------------------------------------------------------------------------
+
+enum GlobalRole {
+  SUPER_ADMIN_OWNER
+  ADMIN
+  USER
+}
+
+enum WorkspaceRole {
+  OWNER
+  ADMIN
+  MANAGER
+  STAFF
+  VIEWER
+}
+
+/// A platform-level account. Global role is for the Super Admin control panel;
+/// per-workspace role (WorkspaceMembership) governs access within a tenant.
+model User {
+  id                String     @id @default(uuid())
+  email             String     @unique
+  phone             String?    @unique
+  passwordHash      String
+  fullName          String
+  globalRole        GlobalRole @default(USER)
+  isActive          Boolean    @default(true)
+  mfaEnabled        Boolean    @default(false)
+  mfaSecretEncrypted String?
+  preferredLanguage String     @default("en") // "en" | "ur"
+  lastLoginAt       DateTime?
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+
+  memberships   WorkspaceMembership[]
+  refreshTokens RefreshToken[]
+  auditLogs     AuditLog[]
+  devices       UserDevice[]
+
+  @@map("users")
+}
+
+/// Links a user to a workspace with a specific role (the RBAC boundary).
+model WorkspaceMembership {
+  id          String        @id @default(uuid())
+  userId      String
+  workspaceId String
+  role        WorkspaceRole
+  isActive    Boolean       @default(true)
+  invitedAt   DateTime      @default(now())
+  acceptedAt  DateTime?
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, workspaceId])
+  @@map("workspace_memberships")
+}
+
+/// Refresh tokens are stored hashed; access tokens (JWT) are never persisted.
+model RefreshToken {
+  id          String   @id @default(uuid())
+  userId      String
+  tokenHash   String   @unique
+  deviceId    String?
+  expiresAt   DateTime
+  revokedAt   DateTime?
+  createdAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("refresh_tokens")
+}
+
+/// A known device for a user, for session/device management (Phase 03).
+model UserDevice {
+  id         String   @id @default(uuid())
+  userId     String
+  deviceName String
+  platform   String // "android" | "ios" | "web" | "windows"
+  lastSeenAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_devices")
+}
+
+// ---------------------------------------------------------------------------
+// Audit Trail (CLAUDE.md §3 / §4: complete audit trails, mandatory logging)
+// ---------------------------------------------------------------------------
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  workspaceId String?
+  userId      String?
+  action      String
+  entityType  String
+  entityId    String?
+  metadata    Json?
+  ipAddress   String?
+  createdAt   DateTime @default(now())
+
+  workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  user      User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, createdAt])
+  @@index([entityType, entityId])
+  @@map("audit_logs")
+}
+
+// ---------------------------------------------------------------------------
+// Minimal double-entry ledger stub (full engine is Phase 05).
+// Exists now only so Dashboard KPI widgets query real, honest (zero) data
+// instead of hardcoded numbers — see IMPLEMENTATION_STATUS.md.
+// ---------------------------------------------------------------------------
+
+enum AccountType {
+  ASSET
+  LIABILITY
+  EQUITY
+  INCOME
+  EXPENSE
+}
+
+model Account {
+  id          String      @id @default(uuid())
+  workspaceId String
+  code        String
+  name        String
+  type        AccountType
+  isActive    Boolean     @default(true)
+  createdAt   DateTime    @default(now())
+
+  workspace    Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  journalLines JournalLine[]
+
+  @@unique([workspaceId, code])
+  @@map("accounts")
+}
+
+/// A balanced group of journal lines. Posted entries are immutable
+/// (CLAUDE.md §3) — corrections must be made via a reversing entry, never
+/// by editing or deleting a posted JournalEntry.
+model JournalEntry {
+  id          String    @id @default(uuid())
+  workspaceId String
+  memo        String?
+  postedAt    DateTime?
+  reversalOfId String?  @unique
+  createdAt   DateTime  @default(now())
+
+  workspace  Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  lines      JournalLine[]
+  reversalOf JournalEntry? @relation("ReversalOf", fields: [reversalOfId], references: [id])
+  reversedBy JournalEntry? @relation("ReversalOf")
+
+  @@map("journal_entries")
+}
+
+/// Every line debits or credits exactly one account. A JournalEntry is valid
+/// only when the sum of its lines' signed amounts is exactly zero.
+model JournalLine {
+  id             String   @id @default(uuid())
+  journalEntryId String
+  accountId      String
+  /// Positive = debit, negative = credit, in the account's minor currency
+  /// unit's Decimal form. Never a float (DECISIONS.md D004).
+  amount         Decimal  @db.Decimal(18, 4)
+
+  journalEntry JournalEntry @relation(fields: [journalEntryId], references: [id], onDelete: Cascade)
+  account      Account      @relation(fields: [accountId], references: [id], onDelete: Restrict)
+
+  @@map("journal_lines")
+}
+
+// ---------------------------------------------------------------------------
+// Minimal Goat Farm stub (full module is Phase 06). Exists only so the
+// Dashboard's Goat Farm widget reflects real (zero) counts.
+// ---------------------------------------------------------------------------
+
+enum AnimalHealthStatus {
+  HEALTHY
+  UNDER_TREATMENT
+  DECEASED
+  SOLD
+}
+
+model Animal {
+  id          String             @id @default(uuid())
+  workspaceId String
+  tagNumber   String
+  healthStatus AnimalHealthStatus @default(HEALTHY)
+  createdAt   DateTime           @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, tagNumber])
+  @@map("animals")
+}
