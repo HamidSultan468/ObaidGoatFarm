@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/l10n/generated/app_localizations.dart';
 import '../../../core/workspace/workspace_controller.dart';
 import '../../../core/workspace/workspace_models.dart';
 
@@ -33,6 +34,7 @@ class _CreateWorkspaceScreenState extends ConsumerState<CreateWorkspaceScreen> {
     final workspaceState = ref.watch(workspaceControllerProvider);
     final isLoading = workspaceState is WorkspaceLoading;
     final errorMessage = workspaceState is WorkspaceNoneExist ? workspaceState.errorMessage : null;
+    final l10n = AppLocalizations.of(context)!;
 
     return Scaffold(
       body: Center(
@@ -49,13 +51,13 @@ class _CreateWorkspaceScreenState extends ConsumerState<CreateWorkspaceScreen> {
                   Icon(Icons.business_rounded, size: 48, color: Theme.of(context).colorScheme.primary),
                   const SizedBox(height: 16),
                   Text(
-                    'Create your workspace',
+                    l10n.createWorkspaceTitle,
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.headlineSmall,
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'A workspace holds your accounts, farm, and land records. You can invite others to it later.',
+                    l10n.createWorkspaceSubtitle,
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.bodyMedium,
                   ),
@@ -73,7 +75,7 @@ class _CreateWorkspaceScreenState extends ConsumerState<CreateWorkspaceScreen> {
                   ],
                   TextFormField(
                     controller: _nameController,
-                    decoration: const InputDecoration(labelText: 'Workspace name', prefixIcon: Icon(Icons.badge_outlined)),
+                    decoration: InputDecoration(labelText: l10n.createWorkspaceNameLabel, prefixIcon: const Icon(Icons.badge_outlined)),
                     validator: (value) {
                       if (value == null || value.trim().length < 2) return 'Enter at least 2 characters';
                       return null;
@@ -90,7 +92,7 @@ class _CreateWorkspaceScreenState extends ConsumerState<CreateWorkspaceScreen> {
                             width: 20,
                             child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                           )
-                        : const Text('Create workspace'),
+                        : Text(l10n.createWorkspaceButton),
                   ),
                 ],
               ),

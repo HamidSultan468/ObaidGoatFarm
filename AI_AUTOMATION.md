@@ -1,21 +1,25 @@
 # AI Integration (Phase 11, AI half)
 
-**Status: not started.** The dashboard reference mockup shows an "AI Assistant" sidebar entry and a "Voice Command" quick action; both exist in the current Flutter app only as honest placeholders.
-
-## Planned scope (from CLAUDE.md §Phase 11)
-
-- Support for multiple AI provider configurations (not locked to a single vendor)
-- Encrypted, securely managed API credentials
-- AI-powered categorization, summaries, suggestions, OCR assistance
-- Provider selection, usage quotas, usage monitoring, failover between providers
-- Manual application functionality must keep working if AI services fail — AI is an enhancement, never a dependency for core features
+**Status: built (2026-11-04); not yet verified with a real API key.**
 
 ## The non-negotiable rule
 
-Per CLAUDE.md §3/§11/Global Rule 8: **AI-generated data never posts automatically.** Any AI output that would create or modify a record (a categorized expense, an OCR-extracted receipt, a suggested journal entry) is a draft requiring explicit human review and confirmation before it becomes a real record — the same rule that applies to [WHATSAPP_INTEGRATION.md](WHATSAPP_INTEGRATION.md) imports.
+AI output never becomes a record by itself. It is stored as a **draft**; a person reviews, can correct it, and approves. Approval runs the same validated services as manual entry. Manual entry keeps working if AI is not set up or fails.
 
-## Notes for when this phase starts
+## What exists
 
-- Provider credentials belong in an encrypted-at-rest table, never in plain config or logs — consistent with [SECURITY.md](SECURITY.md)'s existing handling of refresh tokens (hashed) and passwords (bcrypt).
-- A provider-agnostic interface (similar to the adapter pattern planned for [BACKUP_STORAGE.md](BACKUP_STORAGE.md)) keeps the system from being locked into one AI vendor's API shape.
-- "Failover between providers" implies the design should treat providers as a prioritized list, not a single configured endpoint.
+- **Provider settings** (`backend/src/modules/ai/`, Settings → AI assistant): Anthropic API keys per workspace, encrypted (only a 4-character hint is shown), model (`claude-opus-5-5` default; Sonnet/Haiku 5.5 available), priority order for failover, monthly request limit, connection test, monthly usage (requests, failures, tokens).
+- **Drafts from text:** English, Urdu or Roman Urdu ("2 bakriyan 90 hazar me bechi") → income, expense, animal health, or animal weight draft.
+- **Drafts from receipts:** a photo or PDF in Documents → expense (or income) draft.
+- **How a call works:** official `@anthropic-ai/sdk`, structured JSON output (schema in `extraction.ts`), effort `low`, server-side refusal fallback. The workspace's accounts, animals, land and contacts are given to the model so it can choose real ids; the backend then re-checks every id and account type and drops anything invalid with a warning.
+- **AI Assistant screen:** create drafts, review/edit/approve/reject, see approved and rejected history.
+
+## Verified so far
+
+- Real requests to Anthropic with an invalid key: rejection handled, failover to the next provider, usage logged, monthly limit respected.
+- The full approval path with test drafts (ledger posting, double/concurrent approval, corrections, tenant isolation).
+
+## Not yet built / verified
+
+- Successful extraction with a real key (add one in Settings → AI assistant, then try the AI Assistant).
+- Voice notes (need speech-to-text), other AI vendors (adapter point: `providers/`), AI summaries and suggestions.

@@ -1,0 +1,45 @@
+# Phase 15 prep (DEPLOYMENT.md). Written but NOT YET RUN — Docker isn't
+# installed on the current dev machine. Local prod-like stack: backend +
+# PostgreSQL. Secrets come from backend/.env (gitignored) via `env_file`,
+# matching backend/.env.example's keys — copy it to backend/.env and fill
+# in real values before `docker compose up`.
+#
+# One-time setup: `docker compose run --rm backend npx prisma migrate deploy`
+# (see the Dockerfile's comment on why this is a separate step, not part of
+# the backend service's own startup).
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: tangent_smart_manager
+      POSTGRES_USER: tangent
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in a .env file next to this compose file}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U tangent -d tangent_smart_manager']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+    ports:
+      - '3000:3000'
+    volumes:
+      - backend_storage:/app/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  backend_storage:

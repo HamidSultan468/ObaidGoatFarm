@@ -3,10 +3,13 @@ node_modules/
 dist/
 build/
 coverage/
+*.tsbuildinfo
 .env
 .env.*
 !.env.example
 *.log
+# Encrypted uploaded files (Documents module, STORAGE_DIR)
+backend/storage/
 npm-debug.log*
 
 # ---- Flutter / Dart ----

@@ -1,0 +1,58 @@
+{
+  "@@locale": "ur",
+
+  "appTitle": "Tangent Smart Manager",
+  "appTagline": "انتظام · نگرانی · ترقی",
+
+  "loginEmailLabel": "ای میل",
+  "loginPasswordLabel": "پاس ورڈ",
+  "loginButton": "لاگ ان",
+  "loginEmailRequired": "ای میل درکار ہے",
+  "loginEmailInvalid": "درست ای میل درج کریں",
+  "loginPasswordRequired": "پاس ورڈ درکار ہے",
+  "loginShowPassword": "پاس ورڈ دکھائیں",
+  "loginHidePassword": "پاس ورڈ چھپائیں",
+
+  "mfaPrompt": "اپنی تصدیقی ایپ سے 6 ہندسوں کا کوڈ درج کریں",
+  "mfaVerifyButton": "تصدیق کریں",
+  "mfaBackToLogin": "لاگ ان پر واپس جائیں",
+
+  "navDashboard": "ڈیش بورڈ",
+  "navHouseholdAccounts": "گھریلو کھاتے",
+  "navMyRecords": "میرے ریکارڈز",
+  "navGoatFarm": "بکری فارم",
+  "navLandRecords": "زمین کے ریکارڈز",
+  "navInventory": "انوینٹری",
+  "navContacts": "گاہک اور سپلائرز",
+  "navAccounts": "بینک اور کھاتے",
+  "navReports": "رپورٹس اور تجزیات",
+  "navAiAssistant": "AI معاون",
+  "navNotifications": "اطلاعات",
+  "navSettings": "ترتیبات",
+  "navAdminConsole": "ایڈمن کنسول",
+
+  "searchHint": "کچھ بھی تلاش کریں...",
+  "openMenu": "مینو کھولیں",
+  "logOut": "لاگ آؤٹ",
+
+  "dashboardTitle": "ڈیش بورڈ",
+  "settingsTitle": "ترتیبات",
+  "settingsAccountSection": "اکاؤنٹ",
+  "settingsSecuritySection": "ملٹی فیکٹر تصدیق",
+  "settingsSessionsSection": "فعال سیشنز",
+
+  "notBuiltYet": "یہ ماڈیول ابھی تیار نہیں ہوا۔",
+
+  "createWorkspaceTitle": "اپنا ورک اسپیس بنائیں",
+  "createWorkspaceSubtitle": "ورک اسپیس میں آپ کے اکاؤنٹس، فارم اور زمین کے ریکارڈ محفوظ ہوتے ہیں۔ آپ بعد میں دوسروں کو بھی شامل کر سکتے ہیں۔",
+  "createWorkspaceNameLabel": "ورک اسپیس کا نام",
+  "createWorkspaceButton": "ورک اسپیس بنائیں",
+
+  "cancel": "منسوخ کریں",
+  "save": "محفوظ کریں",
+  "confirm": "تصدیق کریں",
+  "enable": "فعال کریں",
+  "disable": "غیر فعال کریں",
+  "revoke": "منسوخ کریں",
+  "refresh": "تازہ کریں"
+}

@@ -1,0 +1,106 @@
+# Phase 15 prep (DEPLOYMENT.md "CI pipeline running tests on every change").
+# Written but not yet run in a real GitHub Actions environment — push/open
+# a PR to actually exercise it. Mirrors the exact commands verified by hand
+# throughout this project (see IMPLEMENTATION_STATUS.md's per-phase
+# "Verification" sections): backend type-check + unit tests + audit,
+# Flutter analyze + widget tests, and — since this project leans on live
+# E2E scripts more than mocks — a real backend + PostgreSQL running the
+# existing `backend/scripts/e2e/*.e2e.mjs` suites end to end.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npm test
+      - run: npm audit --omit=dev
+
+  flutter:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
+
+  backend-e2e:
+    runs-on: ubuntu-latest
+    needs: backend
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: tangent_smart_manager
+          POSTGRES_USER: tangent
+          POSTGRES_PASSWORD: ci_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U tangent -d tangent_smart_manager"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    # CI_ENCRYPTION_KEY/CI_JWT_ACCESS_SECRET/CI_JWT_REFRESH_SECRET are
+    # repository secrets that don't exist yet — add them under Settings ->
+    # Secrets (any random hex string works; these are CI-only, never real
+    # production secrets) before this job will pass. NODE_ENV stays
+    # "development" here deliberately, same as every local E2E run in this
+    # project, so CORS_ORIGIN (D042) doesn't need to be set for a job with
+    # no browser involved.
+    env:
+      NODE_ENV: development
+      PORT: 3000
+      DATABASE_URL: postgresql://tangent:ci_password@localhost:5432/tangent_smart_manager?schema=public
+      ENCRYPTION_KEY: ${{ secrets.CI_ENCRYPTION_KEY }}
+      JWT_ACCESS_SECRET: ${{ secrets.CI_JWT_ACCESS_SECRET }}
+      JWT_REFRESH_SECRET: ${{ secrets.CI_JWT_REFRESH_SECRET }}
+      JWT_ACCESS_EXPIRES_IN: 15m
+      JWT_REFRESH_EXPIRES_IN: 30d
+      JWT_MFA_CHALLENGE_EXPIRES_IN: 5m
+      STORAGE_DIR: storage
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+      - run: npx prisma migrate deploy
+      - run: npm run build
+      - run: npm run start:prod &
+      - run: timeout 30 bash -c 'until curl -sf http://localhost:3000/health; do sleep 1; done'
+      # `notifications` is excluded: it needs scripts/e2e/smtp-sink.mjs
+      # running alongside it, which is a bit more setup than fits this
+      # first pass — wire it in once this workflow has actually run once.
+      - run: |
+          for script in farm land-documents backup ai-drafts whatsapp reports-sync security-qa; do
+            node scripts/e2e/$script.e2e.mjs http://localhost:3000
+          done

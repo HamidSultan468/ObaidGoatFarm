@@ -1,21 +1,21 @@
-# Cloud Backup & Storage (Phase 10)
+# Backup & Restore (Phase 10)
 
-**Status: not started.** The dashboard reference mockup shows a "Cloud Backup Status" widget with Google Drive/iCloud/OneDrive/Dropbox connections; the current Flutter app shows an honest "not built yet" placeholder in that spot instead.
+**Status: built and verified live (2026-11-04) with on-server storage; cloud providers open.**
 
-## Planned scope (from CLAUDE.md §Phase 10)
+## What exists
 
-- Encrypted backup and restore
-- Google Drive integration via official OAuth authorization
-- Apple-compatible iCloud/CloudKit or document-provider workflow
-- OneDrive, Dropbox, and S3-compatible storage adapters
-- Scheduled and manual backups
-- Backup integrity verification before restoration
-- Connection status, last backup time, failure, and storage-usage display
-- User-managed connected storage accounts
+- **Backup file** (`backend/src/modules/backup/`): every record the workspace owns plus its documents, as gzip'd JSON, encrypted with AES-256-GCM using a key derived (HKDF) from `ENCRYPTION_KEY`. Password hashes, MFA secrets, sessions and notifications are never included.
+- **Manual and automatic** backups — automatic daily at 02:00, keeping the newest N (default 7, owner-adjustable); manual backups are kept until deleted.
+- **Verification** before restore (and on demand): tamper check, checksum, format version, all references, every journal entry balances.
+- **Restore** always creates a new workspace with new ids and all links remapped, in one transaction; the original workspace is never touched. From a stored backup (owner) or an uploaded `.tsmbak` (owner of the source workspace, or Super Admin Owner).
+- **Status:** last backup, failures (CRITICAL notification), number and size of backups, document storage; dashboard Backup card; workspace switcher to open a restored copy.
+- **Storage:** `BackupStorageProvider` interface; today `LocalDiskBackupProvider` under `STORAGE_DIR/backups`.
 
-## Notes for when this phase starts
+## Operational notes
 
-- "Adapter" is the right mental model — a common `BackupProvider` interface with one implementation per cloud service, so adding a new provider doesn't touch the core backup logic.
-- Backup content must be encrypted before it leaves the device/server, not rely on the storage provider's own encryption-at-rest alone.
-- "Verify integrity before restoration" implies checksums or a manifest — a destructive restore should never proceed on an unverified or partial backup.
-- OAuth credentials for each provider are exactly the kind of "AI API credentials"-adjacent secret CLAUDE.md §4 requires encrypting at rest — same handling as planned for [AI_AUTOMATION.md](AI_AUTOMATION.md)'s provider keys.
+- A backup can only be restored on a server with the same `ENCRYPTION_KEY`. Keep the key safe and backed up separately.
+- On-server backups protect against mistakes and bad data, not against losing the server: copy `STORAGE_DIR` (and run PostgreSQL backups) off the machine until a cloud provider is connected.
+
+## Not yet built
+
+- Google Drive, OneDrive, Dropbox, S3-compatible and iCloud adapters — each needs a developer app / credentials from the owner. They implement the existing `BackupStorageProvider` interface.

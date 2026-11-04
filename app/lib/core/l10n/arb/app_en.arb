@@ -1,0 +1,58 @@
+{
+  "@@locale": "en",
+
+  "appTitle": "Tangent Smart Manager",
+  "appTagline": "Manage · Track · Grow",
+
+  "loginEmailLabel": "Email",
+  "loginPasswordLabel": "Password",
+  "loginButton": "Log in",
+  "loginEmailRequired": "Email is required",
+  "loginEmailInvalid": "Enter a valid email",
+  "loginPasswordRequired": "Password is required",
+  "loginShowPassword": "Show password",
+  "loginHidePassword": "Hide password",
+
+  "mfaPrompt": "Enter the 6-digit code from your authenticator app",
+  "mfaVerifyButton": "Verify",
+  "mfaBackToLogin": "Back to login",
+
+  "navDashboard": "Dashboard",
+  "navHouseholdAccounts": "Household Accounts",
+  "navMyRecords": "My Records",
+  "navGoatFarm": "Goat Farm",
+  "navLandRecords": "Land Records",
+  "navInventory": "Inventory",
+  "navContacts": "Customers & Suppliers",
+  "navAccounts": "Bank & Accounts",
+  "navReports": "Reports & Analytics",
+  "navAiAssistant": "AI Assistant",
+  "navNotifications": "Notifications",
+  "navSettings": "Settings",
+  "navAdminConsole": "Admin Console",
+
+  "searchHint": "Search anything...",
+  "openMenu": "Open menu",
+  "logOut": "Log out",
+
+  "dashboardTitle": "Dashboard",
+  "settingsTitle": "Settings",
+  "settingsAccountSection": "Account",
+  "settingsSecuritySection": "Multi-factor authentication",
+  "settingsSessionsSection": "Active sessions",
+
+  "notBuiltYet": "This module is not built yet.",
+
+  "createWorkspaceTitle": "Create your workspace",
+  "createWorkspaceSubtitle": "A workspace holds your accounts, farm, and land records. You can invite others to it later.",
+  "createWorkspaceNameLabel": "Workspace name",
+  "createWorkspaceButton": "Create workspace",
+
+  "cancel": "Cancel",
+  "save": "Save",
+  "confirm": "Confirm",
+  "enable": "Enable",
+  "disable": "Disable",
+  "revoke": "Revoke",
+  "refresh": "Refresh"
+}

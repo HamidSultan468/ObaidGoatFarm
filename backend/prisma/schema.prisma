@@ -1,8 +1,9 @@
 // Tangent Smart Manager — Core Database Schema
-// Phase 02 (System Foundation) + Phase 03 (Auth & Administration) scope.
-// See DECISIONS.md D003/D004/D005 for the reasoning behind money representation
-// and multi-tenant isolation. Accounting/Goat Farm/Land domains beyond the
-// minimal stubs here belong to their own phases (05/06/07) and are not yet built.
+// Phase 02 (System Foundation) + Phase 03 (Auth & Administration) +
+// Phase 05 (Financial Management Core) scope. See DECISIONS.md D003/D004/D005
+// for the reasoning behind money representation and multi-tenant isolation.
+// Phase 06 (Goat Farm), Phase 07 (Land) and Phase 08 (Documents) models are
+// at the end of this file.
 
 generator client {
   provider = "prisma-client-js"
@@ -19,18 +20,42 @@ datasource db {
 /// A client/business tenant. Every tenant-scoped record carries a workspaceId
 /// so isolation can be enforced at the query layer (see DECISIONS.md D005).
 model Workspace {
-  id        String   @id @default(uuid())
-  name      String
-  slug      String   @unique
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                String   @id @default(uuid())
+  name              String
+  slug              String   @unique
+  isActive          Boolean  @default(true)
+  /// Entries whose total meets or exceeds this are created PENDING_APPROVAL
+  /// instead of POSTED. Null = no approval requirement (CLAUDE.md Phase 05
+  /// "recurring transactions, budgets, approvals, reminders").
+  approvalThreshold Decimal? @db.Decimal(18, 4)
+  /// Daily automatic backup (Phase 10) and how many automatic backups to keep.
+  autoBackupEnabled Boolean  @default(true)
+  backupRetention   Int      @default(7)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
-  users        WorkspaceMembership[]
-  auditLogs    AuditLog[]
-  accounts     Account[]
-  journalEntries JournalEntry[]
-  animals      Animal[]
+  users               WorkspaceMembership[]
+  auditLogs           AuditLog[]
+  accounts            Account[]
+  journalEntries      JournalEntry[]
+  contacts            Contact[]
+  recurringTemplates  RecurringTemplate[]
+  budgets             Budget[]
+  animals             Animal[]
+  animalHealthRecords AnimalHealthRecord[]
+  animalWeightRecords AnimalWeightRecord[]
+  breedingRecords     BreedingRecord[]
+  landParcels         LandParcel[]
+  attachments         Attachment[]
+  notifications       Notification[]
+  notificationRules   WorkspaceNotificationRule[]
+  backups             Backup[]
+  aiProviderConfigs   AiProviderConfig[]
+  aiUsageLogs         AiUsageLog[]
+  recordDrafts        RecordDraft[]
+  whatsAppConfig      WhatsAppConfig?
+  whatsAppLinks       WhatsAppLink[]
+  whatsAppMessages    WhatsAppMessageLog[]
 
   @@map("workspaces")
 }
@@ -56,24 +81,32 @@ enum WorkspaceRole {
 /// A platform-level account. Global role is for the Super Admin control panel;
 /// per-workspace role (WorkspaceMembership) governs access within a tenant.
 model User {
-  id                String     @id @default(uuid())
-  email             String     @unique
-  phone             String?    @unique
-  passwordHash      String
-  fullName          String
-  globalRole        GlobalRole @default(USER)
-  isActive          Boolean    @default(true)
-  mfaEnabled        Boolean    @default(false)
+  id                 String     @id @default(uuid())
+  email              String     @unique
+  phone              String?    @unique
+  passwordHash       String
+  fullName           String
+  globalRole         GlobalRole @default(USER)
+  isActive           Boolean    @default(true)
+  mfaEnabled         Boolean    @default(false)
   mfaSecretEncrypted String?
-  preferredLanguage String     @default("en") // "en" | "ur"
-  lastLoginAt       DateTime?
-  createdAt         DateTime   @default(now())
-  updatedAt         DateTime   @updatedAt
+  preferredLanguage  String     @default("en") // "en" | "ur"
+  /// IANA zone used for quiet hours (e.g. Asia/Karachi).
+  timeZone           String     @default("Asia/Karachi")
+  /// Quiet hours as minutes after local midnight; email waits until they end.
+  quietHoursStart    Int?
+  quietHoursEnd      Int?
+  lastLoginAt        DateTime?
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
 
-  memberships   WorkspaceMembership[]
-  refreshTokens RefreshToken[]
-  auditLogs     AuditLog[]
-  devices       UserDevice[]
+  memberships             WorkspaceMembership[]
+  refreshTokens           RefreshToken[]
+  auditLogs               AuditLog[]
+  devices                 UserDevice[]
+  notifications           Notification[]
+  notificationPreferences NotificationPreference[]
+  whatsAppLinks           WhatsAppLink[]
 
   @@map("users")
 }
@@ -97,13 +130,13 @@ model WorkspaceMembership {
 
 /// Refresh tokens are stored hashed; access tokens (JWT) are never persisted.
 model RefreshToken {
-  id          String   @id @default(uuid())
-  userId      String
-  tokenHash   String   @unique
-  deviceId    String?
-  expiresAt   DateTime
-  revokedAt   DateTime?
-  createdAt   DateTime @default(now())
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
+  deviceId  String?
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -148,9 +181,10 @@ model AuditLog {
 }
 
 // ---------------------------------------------------------------------------
-// Minimal double-entry ledger stub (full engine is Phase 05).
-// Exists now only so Dashboard KPI widgets query real, honest (zero) data
-// instead of hardcoded numbers — see IMPLEMENTATION_STATUS.md.
+// Financial Management Core (Phase 05) — centralized double-entry ledger,
+// customer/supplier ledgers, recurring transactions, budgets, approvals.
+// See ACCOUNTING.md for the module overview and DECISIONS.md D015+ for the
+// design reasoning behind this schema.
 // ---------------------------------------------------------------------------
 
 enum AccountType {
@@ -161,50 +195,137 @@ enum AccountType {
   EXPENSE
 }
 
+/// Sub-classification within AccountType, used for default-chart-of-accounts
+/// seeding and for picking which accounts count as "cash" in cash-flow
+/// reports. GENERAL covers everything else (e.g. equity, generic expense).
+enum AccountKind {
+  CASH
+  BANK
+  RECEIVABLE
+  PAYABLE
+  GENERAL
+}
+
 model Account {
-  id          String      @id @default(uuid())
-  workspaceId String
-  code        String
-  name        String
-  type        AccountType
-  isActive    Boolean     @default(true)
-  createdAt   DateTime    @default(now())
+  id              String      @id @default(uuid())
+  workspaceId     String
+  code            String
+  name            String
+  type            AccountType
+  kind            AccountKind @default(GENERAL)
+  /// System accounts (seeded on workspace creation, e.g. default Cash/Bank/
+  /// Accounts Receivable) cannot be deleted — only deactivated.
+  isSystemAccount Boolean     @default(false)
+  isActive        Boolean     @default(true)
+  createdAt       DateTime    @default(now())
 
   workspace    Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   journalLines JournalLine[]
+  budgets      Budget[]
 
   @@unique([workspaceId, code])
   @@map("accounts")
 }
 
+enum ContactType {
+  CUSTOMER
+  SUPPLIER
+  BOTH
+}
+
+/// A customer and/or supplier. Their "ledger" is simply the set of
+/// JournalEntry rows tagged with this contactId — no parallel bookkeeping.
+model Contact {
+  id          String      @id @default(uuid())
+  workspaceId String
+  type        ContactType
+  name        String
+  email       String?
+  phone       String?
+  address     String?
+  notes       String?
+  isActive    Boolean     @default(true)
+  createdAt   DateTime    @default(now())
+
+  workspace      Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  journalEntries JournalEntry[]
+  landParcels    LandParcel[]
+
+  @@index([workspaceId, type])
+  @@map("contacts")
+}
+
+enum JournalEntryType {
+  MANUAL
+  INCOME
+  EXPENSE
+  TRANSFER
+  INVOICE
+  PAYMENT_RECEIVED
+  PAYMENT_MADE
+  OPENING_BALANCE
+  RECURRING
+}
+
+enum JournalEntryStatus {
+  POSTED
+  PENDING_APPROVAL
+  REJECTED
+}
+
 /// A balanced group of journal lines. Posted entries are immutable
 /// (CLAUDE.md §3) — corrections must be made via a reversing entry, never
-/// by editing or deleting a posted JournalEntry.
+/// by editing or deleting a posted JournalEntry. An entry whose total meets
+/// the workspace's approvalThreshold starts PENDING_APPROVAL instead.
 model JournalEntry {
-  id          String    @id @default(uuid())
-  workspaceId String
-  memo        String?
-  postedAt    DateTime?
-  reversalOfId String?  @unique
-  createdAt   DateTime  @default(now())
+  id               String             @id @default(uuid())
+  workspaceId      String
+  entryType        JournalEntryType   @default(MANUAL)
+  status           JournalEntryStatus @default(POSTED)
+  memo             String?
+  /// Human-readable receipt/invoice number shown to the user (distinct from `id`).
+  documentNumber   String?
+  /// Opaque token embedded in a QR code so a receipt can be verified by
+  /// anyone holding it, without exposing the internal id. See ReceiptsController.
+  verificationCode String?            @unique
+  contactId        String?
+  createdByUserId  String?
+  approvedByUserId String?
+  approvedAt       DateTime?
+  postedAt         DateTime?
+  reversalOfId     String?            @unique
+  /// Optional tags so farm/land income and costs roll up per animal or
+  /// per parcel without a parallel bookkeeping system.
+  animalId         String?
+  landParcelId     String?
+  createdAt        DateTime           @default(now())
 
   workspace  Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  contact    Contact?      @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  animal     Animal?       @relation(fields: [animalId], references: [id], onDelete: SetNull)
+  landParcel LandParcel?   @relation(fields: [landParcelId], references: [id], onDelete: SetNull)
   lines      JournalLine[]
   reversalOf JournalEntry? @relation("ReversalOf", fields: [reversalOfId], references: [id])
   reversedBy JournalEntry? @relation("ReversalOf")
 
+  @@index([workspaceId, status, postedAt])
+  @@index([animalId])
+  @@index([landParcelId])
   @@map("journal_entries")
 }
 
 /// Every line debits or credits exactly one account. A JournalEntry is valid
 /// only when the sum of its lines' signed amounts is exactly zero.
 model JournalLine {
-  id             String   @id @default(uuid())
+  id             String    @id @default(uuid())
   journalEntryId String
   accountId      String
   /// Positive = debit, negative = credit, in the account's minor currency
   /// unit's Decimal form. Never a float (DECISIONS.md D004).
-  amount         Decimal  @db.Decimal(18, 4)
+  amount         Decimal   @db.Decimal(18, 4)
+  /// Set when this line has been matched against a bank statement line
+  /// during reconciliation. Null = unreconciled.
+  reconciledAt   DateTime?
 
   journalEntry JournalEntry @relation(fields: [journalEntryId], references: [id], onDelete: Cascade)
   account      Account      @relation(fields: [accountId], references: [id], onDelete: Restrict)
@@ -212,27 +333,678 @@ model JournalLine {
   @@map("journal_lines")
 }
 
-// ---------------------------------------------------------------------------
-// Minimal Goat Farm stub (full module is Phase 06). Exists only so the
-// Dashboard's Goat Farm widget reflects real (zero) counts.
-// ---------------------------------------------------------------------------
-
-enum AnimalHealthStatus {
-  HEALTHY
-  UNDER_TREATMENT
-  DECEASED
-  SOLD
+enum RecurrenceFrequency {
+  DAILY
+  WEEKLY
+  MONTHLY
+  YEARLY
 }
 
-model Animal {
-  id          String             @id @default(uuid())
-  workspaceId String
-  tagNumber   String
-  healthStatus AnimalHealthStatus @default(HEALTHY)
-  createdAt   DateTime           @default(now())
+/// A reusable template for a transaction that repeats on a schedule.
+/// Posting is triggered via an explicit "run now" endpoint today — true
+/// unattended cron-based execution needs job-scheduler infrastructure not
+/// yet set up (see RECURRING_AND_BUDGETS.md).
+model RecurringTemplate {
+  id            String              @id @default(uuid())
+  workspaceId   String
+  name          String
+  entryType     JournalEntryType
+  fromAccountId String
+  toAccountId   String
+  contactId     String?
+  amount        Decimal             @db.Decimal(18, 4)
+  memo          String?
+  frequency     RecurrenceFrequency
+  nextRunDate   DateTime
+  isActive      Boolean             @default(true)
+  createdAt     DateTime            @default(now())
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
+  @@map("recurring_templates")
+}
+
+/// A planned spending/income limit for one account over one period.
+/// "Budget vs actual" compares `amount` to the sum of POSTED journal lines
+/// on `accountId` within [periodStart, periodEnd].
+model Budget {
+  id          String   @id @default(uuid())
+  workspaceId String
+  accountId   String
+  periodStart DateTime
+  periodEnd   DateTime
+  amount      Decimal  @db.Decimal(18, 4)
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  account   Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, accountId])
+  @@map("budgets")
+}
+
+// ---------------------------------------------------------------------------
+// Goat Farm (Phase 06). Money never lives here: purchases, sales, feed and
+// vet costs post through the ledger, tagged with `JournalEntry.animalId`.
+// Weights use Decimal for the same reason money does: no float drift.
+// ---------------------------------------------------------------------------
+
+enum AnimalSex {
+  MALE
+  FEMALE
+}
+
+/// Lifecycle (is the animal still on the farm?), kept separate from
+/// health so a sold animal's last health state is not lost.
+enum AnimalStatus {
+  ACTIVE
+  SOLD
+  DECEASED
+}
+
+enum AnimalHealthStatus {
+  HEALTHY
+  SICK
+  UNDER_TREATMENT
+  QUARANTINED
+}
+
+enum AnimalAcquisition {
+  BORN_ON_FARM
+  PURCHASED
+  GIFTED
+  OTHER
+}
+
+model Animal {
+  id                  String             @id @default(uuid())
+  workspaceId         String
+  /// Unique per workspace (ear tag / ID number).
+  tagNumber           String
+  name                String?
+  species             String             @default("GOAT")
+  breed               String?
+  sex                 AnimalSex
+  dateOfBirth         DateTime?
+  color               String?
+  status              AnimalStatus       @default(ACTIVE)
+  healthStatus        AnimalHealthStatus @default(HEALTHY)
+  acquisition         AnimalAcquisition  @default(PURCHASED)
+  acquisitionDate     DateTime?
+  /// Free-text owner when the animal is held for someone else (share farming).
+  ownership           String?
+  sireId              String?
+  damId               String?
+  dietaryRestrictions String?
+  notes               String?
+  /// Set when status becomes SOLD/DECEASED.
+  exitDate            DateTime?
+  exitReason          String?
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  workspace       Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  sire            Animal?              @relation("Sire", fields: [sireId], references: [id], onDelete: SetNull)
+  dam             Animal?              @relation("Dam", fields: [damId], references: [id], onDelete: SetNull)
+  sireOf          Animal[]             @relation("Sire")
+  damOf           Animal[]             @relation("Dam")
+  healthRecords   AnimalHealthRecord[]
+  weightRecords   AnimalWeightRecord[]
+  breedingsAsDam  BreedingRecord[]     @relation("BreedingDam")
+  breedingsAsSire BreedingRecord[]     @relation("BreedingSire")
+  journalEntries  JournalEntry[]
+
   @@unique([workspaceId, tagNumber])
+  @@index([workspaceId, status])
   @@map("animals")
+}
+
+enum HealthRecordType {
+  CHECKUP
+  ILLNESS
+  TREATMENT
+  VACCINATION
+  DEWORMING
+  MEDICATION
+  INJURY
+  OTHER
+}
+
+/// Health and veterinary history. `nextDueDate` drives the upcoming
+/// vaccination/deworming/vet schedule.
+model AnimalHealthRecord {
+  id              String           @id @default(uuid())
+  workspaceId     String
+  animalId        String
+  type            HealthRecordType
+  recordDate      DateTime
+  description     String
+  medication      String?
+  dosage          String?
+  veterinarian    String?
+  nextDueDate     DateTime?
+  createdByUserId String?
+  createdAt       DateTime         @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  animal    Animal    @relation(fields: [animalId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, nextDueDate])
+  @@index([animalId, recordDate])
+  @@map("animal_health_records")
+}
+
+model AnimalWeightRecord {
+  id          String   @id @default(uuid())
+  workspaceId String
+  animalId    String
+  recordDate  DateTime
+  weightKg    Decimal  @db.Decimal(8, 3)
+  notes       String?
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  animal    Animal    @relation(fields: [animalId], references: [id], onDelete: Cascade)
+
+  @@index([animalId, recordDate])
+  @@map("animal_weight_records")
+}
+
+enum BreedingMethod {
+  NATURAL
+  ARTIFICIAL_INSEMINATION
+}
+
+enum BreedingStatus {
+  MATED
+  PREGNANT
+  NOT_PREGNANT
+  KIDDED
+  ABORTED
+}
+
+/// Mating, pregnancy, kidding. Recording a kidding creates the kids as new
+/// Animal rows with dam/sire set, so pedigree comes from the same data.
+model BreedingRecord {
+  id                  String         @id @default(uuid())
+  workspaceId         String
+  damId               String
+  sireId              String?
+  /// For a sire not on this farm (AI straw or borrowed buck).
+  externalSire        String?
+  method              BreedingMethod @default(NATURAL)
+  matingDate          DateTime
+  expectedKiddingDate DateTime
+  status              BreedingStatus @default(MATED)
+  kiddingDate         DateTime?
+  kidsBorn            Int?
+  kidsAlive           Int?
+  complications       String?
+  notes               String?
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  dam       Animal    @relation("BreedingDam", fields: [damId], references: [id], onDelete: Cascade)
+  sire      Animal?   @relation("BreedingSire", fields: [sireId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, status, expectedKiddingDate])
+  @@map("breeding_records")
+}
+
+// ---------------------------------------------------------------------------
+// Land Management (Phase 07). Area is stored canonically in square feet
+// (Decimal) alongside the unit the user entered, so conversions are exact
+// and the original entry is never lost. Land income/expense posts through
+// the ledger tagged with `JournalEntry.landParcelId`.
+// ---------------------------------------------------------------------------
+
+enum AreaUnit {
+  SQUARE_FOOT
+  SQUARE_METER
+  MARLA
+  KANAL
+  ACRE
+  HECTARE
+}
+
+enum LandTenure {
+  OWNED
+  LEASED_IN
+  LEASED_OUT
+  RENTED_OUT
+}
+
+enum LandStatus {
+  ACTIVE
+  SOLD
+  LEASE_ENDED
+}
+
+model LandParcel {
+  id                    String     @id @default(uuid())
+  workspaceId           String
+  name                  String
+  location              String?
+  /// Khasra / khewat / survey number.
+  surveyNumber          String?
+  tenure                LandTenure @default(OWNED)
+  status                LandStatus @default(ACTIVE)
+  ownerName             String?
+  areaValue             Decimal    @db.Decimal(18, 4)
+  areaUnit              AreaUnit
+  areaSqFt              Decimal    @db.Decimal(18, 4)
+  landUse               String?
+  acquisitionDate       DateTime?
+  /// Landlord or tenant for leased/rented parcels.
+  counterpartyContactId String?
+  leaseStartDate        DateTime?
+  leaseEndDate          DateTime?
+  leaseTerms            String?
+  notes                 String?
+  createdAt             DateTime   @default(now())
+  updatedAt             DateTime   @updatedAt
+
+  workspace      Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  counterparty   Contact?       @relation(fields: [counterpartyContactId], references: [id], onDelete: SetNull)
+  journalEntries JournalEntry[]
+
+  @@index([workspaceId, status])
+  @@map("land_parcels")
+}
+
+// ---------------------------------------------------------------------------
+// Documents & Records (Phase 08). File bytes are encrypted (AES-256-GCM)
+// on local disk under STORAGE_DIR; this table holds only metadata.
+// ---------------------------------------------------------------------------
+
+enum AttachmentModule {
+  ANIMAL
+  LAND
+  TRANSACTION
+  CONTACT
+  GENERAL
+}
+
+model Attachment {
+  id               String           @id @default(uuid())
+  workspaceId      String
+  module           AttachmentModule
+  /// Id of the owning record in `module`; null for GENERAL documents.
+  recordId         String?
+  title            String
+  fileName         String
+  mimeType         String
+  sizeBytes        Int
+  /// SHA-256 of the plaintext, for integrity checks.
+  sha256           String
+  /// Path relative to STORAGE_DIR. Never exposed to clients.
+  storageKey       String           @unique
+  uploadedByUserId String?
+  createdAt        DateTime         @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, module, recordId])
+  @@map("attachments")
+}
+
+// ---------------------------------------------------------------------------
+// Notifications (Phase 09). One row per recipient. Rule-generated rows carry
+// a dedupeKey so a reminder is created once per user, however often the
+// rules run. External channels (email) are tracked per delivery with retries.
+// ---------------------------------------------------------------------------
+
+enum NotificationCategory {
+  FARM_HEALTH
+  FARM_BREEDING
+  LAND_LEASE
+  APPROVALS
+  BACKUP
+  DRAFTS
+  ANNOUNCEMENT
+}
+
+enum NotificationSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+enum NotificationChannel {
+  EMAIL
+}
+
+enum DeliveryStatus {
+  PENDING
+  SENT
+  FAILED
+  SKIPPED
+}
+
+model Notification {
+  id              String               @id @default(uuid())
+  userId          String
+  /// Null for platform-wide announcements from the Super Admin Owner.
+  workspaceId     String?
+  category        NotificationCategory
+  severity        NotificationSeverity @default(INFO)
+  title           String
+  body            String
+  /// In-app route to open, e.g. /goat-farm/animals/<id>.
+  link            String?
+  dedupeKey       String?
+  createdByUserId String?
+  readAt          DateTime?
+  createdAt       DateTime             @default(now())
+
+  user       User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace  Workspace?             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  deliveries NotificationDelivery[]
+
+  @@unique([userId, dedupeKey])
+  @@index([userId, readAt, createdAt])
+  @@map("notifications")
+}
+
+model NotificationDelivery {
+  id             String              @id @default(uuid())
+  notificationId String
+  channel        NotificationChannel
+  status         DeliveryStatus      @default(PENDING)
+  attempts       Int                 @default(0)
+  lastError      String?
+  nextAttemptAt  DateTime            @default(now())
+  sentAt         DateTime?
+  createdAt      DateTime            @default(now())
+
+  notification Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+
+  @@index([status, nextAttemptAt])
+  @@map("notification_deliveries")
+}
+
+/// Per-user channel choice per category. Missing row = defaults (in-app on, email off).
+model NotificationPreference {
+  id       String               @id @default(uuid())
+  userId   String
+  category NotificationCategory
+  inApp    Boolean              @default(true)
+  email    Boolean              @default(false)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, category])
+  @@map("notification_preferences")
+}
+
+/// Owner-configured automatic rule: on/off and which roles receive it.
+/// Missing row = the built-in defaults in notification-rules.config.ts.
+model WorkspaceNotificationRule {
+  id             String               @id @default(uuid())
+  workspaceId    String
+  category       NotificationCategory
+  isEnabled      Boolean              @default(true)
+  recipientRoles WorkspaceRole[]
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, category])
+  @@map("workspace_notification_rules")
+}
+
+// ---------------------------------------------------------------------------
+// Backup & restore (Phase 10). A backup is one encrypted file (gzip'd JSON of
+// every workspace record + decrypted attachment bytes), stored through a
+// BackupStorageProvider. Restores always create a NEW workspace.
+// ---------------------------------------------------------------------------
+
+enum BackupTrigger {
+  MANUAL
+  SCHEDULED
+}
+
+enum BackupStatus {
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+model Backup {
+  id              String        @id @default(uuid())
+  workspaceId     String
+  trigger         BackupTrigger
+  status          BackupStatus  @default(RUNNING)
+  /// Storage provider id, e.g. LOCAL.
+  provider        String        @default("LOCAL")
+  /// Provider-relative key. Never exposed to clients.
+  storageKey      String?       @unique
+  sizeBytes       Int?
+  /// SHA-256 of the encrypted file, checked before any restore.
+  sha256          String?
+  formatVersion   Int           @default(1)
+  /// Record counts per table, for display and verification.
+  counts          Json?
+  error           String?
+  createdByUserId String?
+  startedAt       DateTime      @default(now())
+  completedAt     DateTime?
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, startedAt])
+  @@map("backups")
+}
+
+// ---------------------------------------------------------------------------
+// AI (Phase 11). Provider credentials are AES-256-GCM encrypted; only a
+// 4-character hint is ever returned. AI output never becomes a record
+// directly: it is stored as a RecordDraft that a person must approve.
+// ---------------------------------------------------------------------------
+
+enum AiProvider {
+  ANTHROPIC
+}
+
+/// One configured AI provider for a workspace. Several can exist; enabled
+/// ones are tried in `priority` order (lowest first) for failover.
+model AiProviderConfig {
+  id                  String     @id @default(uuid())
+  workspaceId         String
+  provider            AiProvider
+  model               String
+  apiKeyEncrypted     String
+  /// Last 4 characters of the key, for display only.
+  keyHint             String
+  priority            Int        @default(1)
+  isEnabled           Boolean    @default(true)
+  /// Requests allowed per calendar month; null = unlimited.
+  monthlyRequestLimit Int?
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
+
+  workspace Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  usageLogs AiUsageLog[]
+
+  @@index([workspaceId, priority])
+  @@map("ai_provider_configs")
+}
+
+model AiUsageLog {
+  id           String     @id @default(uuid())
+  workspaceId  String
+  configId     String?
+  provider     AiProvider
+  model        String
+  /// Which feature made the call, e.g. "draft.text", "draft.receipt", "provider.test".
+  feature      String
+  success      Boolean
+  inputTokens  Int?
+  outputTokens Int?
+  latencyMs    Int
+  error        String?
+  createdAt    DateTime   @default(now())
+
+  workspace Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  config    AiProviderConfig? @relation(fields: [configId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, createdAt])
+  @@index([configId, createdAt])
+  @@map("ai_usage_logs")
+}
+
+enum DraftSource {
+  AI_TEXT
+  AI_RECEIPT
+  WHATSAPP
+}
+
+enum DraftKind {
+  INCOME
+  EXPENSE
+  ANIMAL_HEALTH
+  ANIMAL_WEIGHT
+}
+
+enum DraftStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+/// A proposed record from AI or WhatsApp. Nothing is created until a person
+/// approves it; approval runs the same validated service path as manual
+/// entry (ledger, animals), so drafts can never bypass business rules.
+model RecordDraft {
+  id               String      @id @default(uuid())
+  workspaceId      String
+  source           DraftSource
+  kind             DraftKind
+  status           DraftStatus @default(PENDING)
+  summary          String
+  /// Proposed field values (validated again on approval).
+  payload          Json
+  /// The original text / caption the draft came from.
+  rawInput         String?
+  warnings         Json?
+  /// Receipt image/PDF the draft was read from.
+  attachmentId     String?
+  /// WhatsApp sender (E.164) for WHATSAPP drafts.
+  sourcePhone      String?
+  createdByUserId  String?
+  reviewedByUserId String?
+  reviewedAt       DateTime?
+  rejectReason     String?
+  /// What approval created, e.g. JournalEntry / AnimalHealthRecord + its id.
+  resultType       String?
+  resultId         String?
+  createdAt        DateTime    @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, status, createdAt])
+  @@map("record_drafts")
+}
+
+// ---------------------------------------------------------------------------
+// WhatsApp (Phase 11). Official WhatsApp Business Cloud API: Meta calls our
+// webhook (HMAC-signed with the app secret); replies go out via the Graph
+// API. A phone number is trusted only after the user links it with a
+// one-time code. Messages become RecordDrafts; nothing posts directly.
+// ---------------------------------------------------------------------------
+
+model WhatsAppConfig {
+  id                   String   @id @default(uuid())
+  workspaceId          String   @unique
+  /// Meta's id for the business phone number; routes incoming webhooks.
+  phoneNumberId        String   @unique
+  displayPhone         String?
+  accessTokenEncrypted String
+  appSecretEncrypted   String
+  /// Random token Meta echoes during webhook verification.
+  verifyToken          String   @unique
+  isEnabled            Boolean  @default(true)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@map("whatsapp_configs")
+}
+
+model WhatsAppLink {
+  id                String    @id @default(uuid())
+  workspaceId       String
+  userId            String
+  /// E.164, e.g. +923001234567
+  phoneE164         String
+  verifiedAt        DateTime?
+  /// SHA-256 of the one-time link code; cleared once used.
+  linkCodeHash      String?
+  linkCodeExpiresAt DateTime?
+  failedAttempts    Int       @default(0)
+  createdAt         DateTime  @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, phoneE164])
+  @@unique([workspaceId, userId])
+  @@map("whatsapp_links")
+}
+
+enum WhatsAppDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum WhatsAppMessageStatus {
+  RECEIVED
+  PROCESSED
+  IGNORED
+  FAILED
+  SENT
+}
+
+model WhatsAppMessageLog {
+  id          String                @id @default(uuid())
+  workspaceId String?
+  direction   WhatsAppDirection
+  /// Meta's message id; unique so webhook retries are processed once.
+  waMessageId String?               @unique
+  phoneE164   String
+  body        String?
+  status      WhatsAppMessageStatus
+  error       String?
+  draftId     String?
+  createdAt   DateTime              @default(now())
+
+  workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt])
+  @@map("whatsapp_message_logs")
+}
+
+// ---------------------------------------------------------------------------
+// Offline sync (Phase 13). A client that may retry (offline outbox) sends an
+// Idempotency-Key; the first response is stored and replayed for retries, so
+// a resubmitted entry is never posted twice.
+// ---------------------------------------------------------------------------
+
+model IdempotencyRecord {
+  id           String   @id @default(uuid())
+  userId       String
+  key          String
+  method       String
+  path         String
+  /// SHA-256 of method + path + body; a reused key with a different body is rejected.
+  requestHash  String
+  /// Null while the first request is still running.
+  statusCode   Int?
+  responseBody Json?
+  createdAt    DateTime @default(now())
+
+  @@unique([userId, key])
+  @@index([createdAt])
+  @@map("idempotency_records")
 }

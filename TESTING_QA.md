@@ -7,33 +7,41 @@ Testing strategy and current, actual coverage — not aspirational. See [IMPLEME
 | Layer | Tooling | Approach |
 |---|---|---|
 | Backend unit tests | Vitest | Pure business logic (e.g. `Money` arithmetic) — no database or network required, fast, run on every change |
-| Backend integration tests | Vitest + a real PostgreSQL instance | Auth flow, guards, audit logging against a real database — **not yet possible in this environment** (no PostgreSQL available — see IMPLEMENTATION_STATUS.md blockers) |
+| Backend integration tests | Vitest + a real PostgreSQL instance | Auth flow, guards, audit logging against a real database — PostgreSQL is now available locally; automated integration suites are not written yet (live checks were done manually with curl — see IMPLEMENTATION_STATUS.md) |
 | Backend type safety | `tsc --noEmit` | Whole-project type-check, run after any backend change |
 | Flutter static analysis | `flutter analyze` | Lint + type-check, zero-tolerance (must be clean) |
 | Flutter widget tests | `flutter_test` | Component/screen behavior with provider overrides for dependencies that touch platform channels (see `TokenStorage` abstraction, which exists specifically so `ApiClient` is testable without a real secure-storage plugin) |
-| Flutter integration/E2E | `integration_test` package (not yet set up) | Full user flows against a running backend — planned for Phase 14 |
+| Flutter integration/E2E | `integration_test` package (not yet set up) | Full user flows against a running backend; so far done ad hoc instead — a disposable `puppeteer-core` script driving the real Flutter web build in headless Chrome against the real backend (see IMPLEMENTATION_STATUS.md's per-phase live UI runs) |
 | Manual UI verification | Running the actual app | Per CLAUDE.md: UI changes are tested by actually running the feature in a browser/app, not just passing static checks |
 
 ## Current coverage (verified, as of the last IMPLEMENTATION_STATUS.md update)
 
-- Backend: 9/9 unit tests passing (`Money`). Whole-project type-check clean.
-- Flutter: 1/1 widget test passing (app boots to login screen with no session). `flutter analyze`: 0 issues.
-- **Not yet covered**: any code path that requires a live database (all of the auth module's actual behavior — register/login/refresh/logout/me — is type-checked but not integration-tested), any real login flow in the Flutter app against a running backend.
+- Backend: 104/104 unit tests passing (`Money` ×9, ledger balance ×6, tagged profitability ×5, gestation ×6, land area ×6, upload file-type ×7, encryption ×5, delivery timing ×5, backup cipher/format ×8, AI extraction ×10, WhatsApp ×7, report math/rounding ×12, idempotency ×10, env validation/CORS_ORIGIN ×3, JwtStrategy purpose-claim rejection ×3). Whole-project type-check clean. `npm audit --omit=dev`: 0 vulnerabilities.
+- Flutter: 63/63 tests passing — adds notifications (6), backup (3), API error text (4), draft review card (3), AI/WhatsApp models (3), offline outbox controller (9), Reports screen (2; caught a real `DropdownButtonFormField` overflow on the report picker, fixed with `isExpanded` + ellipsis — see IMPLEMENTATION_STATUS.md "Bugs found and fixed during Phase 5"). `flutter analyze`: 0 issues.
+- **Phase 6 / Phase 14 live security & QA sweep (2026-11-05):** 60/60 scripted checks (`backend/scripts/e2e/security-qa.e2e.mjs`), consolidated across every module at once rather than module-by-module: tenant isolation on every `:workspaceId`-scoped route (reads and writes, including that a blocked write genuinely never happened, and that a nonexistent sub-resource id still gets a uniform 403 rather than leaking existence), auth hardening (no/malformed/tampered tokens, password policy, duplicate email, refresh single-use rotation, logout revocation, rate limiting), full MFA lifecycle including the purpose-scoped challenge token, and input-validation probes (SQL-injection- and script-tag-shaped strings stored as inert literal text, oversized input rejected, unexpected fields rejected, negative amounts rejected). Found and fixed one critical issue (MFA bypass, DECISIONS.md D041) and one hardening gap (CORS fail-open default, D042) — see SECURITY.md "Phase 14 findings". Full regression of every earlier phase's E2E suite re-run clean afterward (219/224; the 5 not passing are `notifications.e2e.mjs` checks that need the separate `smtp-sink.mjs` helper running, not a regression).
+- **Phase 6 accessibility pass (2026-11-05):** two icon-only buttons (`login_screen.dart`'s password-visibility toggle, `top_bar.dart`'s menu button) had no screen-reader label — fixed with localized tooltips (English + Urdu). WCAG contrast computed for every color pair in `AppColors`: found the dashboard KPI cards' label text (`Colors.white70`) failing AA contrast against all four accent colors — fixed to solid white (DECISIONS.md D040); one remaining partial gap and one open question (the shared border/divider color) documented rather than changed blindly, since fully closing them means adjusting the approved color palette.
+- **Phase 5 live E2E (2026-11-04):** 37/37 scripted checks (`backend/scripts/e2e/reports-sync.e2e.mjs`) — per-role report access (8 reports for owner, 2 for staff, 403s for the rest), validation (unknown report/format, reversed range), financial-summary/balance-sheet/trial-balance exactness against the existing P&L/reports endpoints, CSV/Excel/PDF export correctness (independently cross-checked with Python `openpyxl` and `pymupdf` in a scratch venv — real spreadsheet and real PDF pages, not just a byte count), idempotency (retry-same-key replay, different-amount-same-key rejection, 5 concurrent submissions → 1 entry, per-user key scoping), `If-Match` conflict detection (stale edit refused 412, current edit kept) on both animals and land.
+- **Phase 5 live UI (2026-11-04)**, Flutter web in a real Chrome instance (driven via the DevTools Protocol): logged in, opened Reports & Analytics, switched reports via the picker, changed the date range (live refetch confirmed by network log), the Financial Summary trend chart rendered with real data, CSV export confirmed end-to-end — server returned the exact byte count, Chrome's download manager received 100% of those bytes with the correct generated filename.
+- **Phase 4 live E2E (2026-11-04):** notifications 31 (with a local SMTP server: `smtp-sink.mjs`), backup 36, AI + drafts 27, WhatsApp 28 (signed webhooks built like Meta's). Full regression with Phase 3 suites: 192/192.
+- **Phase 3 live E2E (2026-11-04):** 70 scripted checks against the real API + PostgreSQL (40 Goat Farm, 30 Land + Documents), covering validation, lifecycle rules, profitability math, upload hardening, encryption on disk and cross-tenant isolation. Plus a Chrome UI pass driven through the DevTools protocol.
+- **Live manual E2E (2026-11-04)** against a real PostgreSQL database: register, login, workspace seeding, income/expense posting, balances, P&L, trial balance, receipt verification, reversal + double-reversal rejection, unbalanced-entry rejection, tenant isolation (403); Flutter web login → dashboard → accounts in Chrome. Full table in IMPLEMENTATION_STATUS.md.
+- The live E2E scripts are in `backend/scripts/e2e/` (`farm`, `land-documents`, `notifications` + `smtp-sink`, `backup`, `ai-drafts`, `whatsapp`, `reports-sync`, `security-qa`). `.github/workflows/ci.yml` now runs all but `notifications` against a real PostgreSQL service container — written but not yet exercised (needs a push/PR; see DEPLOYMENT.md).
+- **Not yet covered**: live checks of the admin console's platform-level mutations (workspace/user activation, global role reassignment), budgets, recurring templates and approvals. MFA and sessions are now covered (see the Phase 6 sweep above).
 
 ## What "done" requires (per CLAUDE.md §5/§7)
 
 A feature is not reported complete until the relevant tests above have actually been run and passed — not merely written. See [ACCEPTANCE_CRITERIA.md](ACCEPTANCE_CRITERIA.md) for the full Definition of Done.
 
-## Security-specific testing (Phase 14, not yet started)
+## Security-specific testing (Phase 14) — done, see the sweep above
 
-Planned, not yet performed:
-- Tenant isolation: verify a user cannot access another workspace's data even with a guessed/forged `workspaceId`.
-- Auth: verify expired/revoked/malformed tokens are rejected, refresh rotation actually invalidates the old token, rate limiting actually throttles.
-- Financial integrity: verify an unbalanced journal entry is rejected, a posted entry cannot be mutated, reversal produces a correct net-zero result.
-- File upload security, backup/restore integrity (once those modules exist).
+- ✅ Tenant isolation: verified a user cannot access another workspace's data, across every module, with a real outsider token (not a guessed/forged id — an actual second account).
+- ✅ Auth: malformed/tampered/missing tokens rejected, refresh rotation single-use, logout revocation, rate limiting actually throttles, password policy enforced live.
+- ✅ Financial integrity: already covered per-phase (unbalanced entries rejected, posted entries immutable, reversal exactness) — re-confirmed as part of the full regression re-run.
+- File upload security: covered in the Phase 3 sweep (content-sniffed type, size limit, path sanitization). Backup/restore integrity: covered in the Phase 4 sweep (tamper/checksum/reference verification before any restore).
+- Not performed: an independent third-party penetration test (needs an external firm — a Phase 15-adjacent, account-gated item, not something this pass could do itself).
 
 ## Known gaps
 
-- No CI pipeline yet — tests are run manually.
+- CI pipeline is defined (`.github/workflows/ci.yml`) but not yet exercised — needs a push/PR and three repo secrets (see DEPLOYMENT.md).
 - No test database/fixture strategy defined yet (needed once Phase 05+ introduces data-heavy flows).
 - No load/performance testing yet.

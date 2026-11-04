@@ -46,10 +46,15 @@ export class HttpExceptionFilter implements ExceptionFilter {
 
     if (isHttpException) {
       const response_ = exception.getResponse();
-      if (typeof response_ === 'object' && response_ !== null && 'message' in response_) {
-        const details = (response_ as { message: unknown }).message;
-        if (Array.isArray(details)) {
-          body.details = details;
+      if (typeof response_ === 'object' && response_ !== null) {
+        // Field-level problems go to `details`: either class-validator's
+        // message array, or an explicit `errors` list from a service
+        // (draft approval, backup verification).
+        const { message, errors } = response_ as { message?: unknown; errors?: unknown };
+        if (Array.isArray(message)) {
+          body.details = message;
+        } else if (Array.isArray(errors)) {
+          body.details = errors;
         }
       }
     }

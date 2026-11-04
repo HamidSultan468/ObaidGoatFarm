@@ -27,15 +27,17 @@ export class AuditInterceptor implements NestInterceptor {
       .switchToHttp()
       .getRequest<Request & { user?: AuthenticatedUser; membership?: WorkspaceMembershipContext }>();
 
-    if (!MUTATING_METHODS.has(request.method)) {
+    const explicitAction = this.reflector.getAllAndOverride<string>(AUDIT_ACTION_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    // Every mutation is audited; reads only when the route opts in with
+    // @AuditAction (sensitive reads such as backup downloads and exports).
+    if (!MUTATING_METHODS.has(request.method) && !explicitAction) {
       return next.handle();
     }
 
-    const action =
-      this.reflector.getAllAndOverride<string>(AUDIT_ACTION_KEY, [
-        context.getHandler(),
-        context.getClass(),
-      ]) ?? `${request.method} ${request.route?.path ?? request.url}`;
+    const action = explicitAction ?? `${request.method} ${request.route?.path ?? request.url}`;
 
     return next.handle().pipe(
       tap((result) => {

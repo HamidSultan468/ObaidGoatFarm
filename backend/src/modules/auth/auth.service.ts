@@ -4,6 +4,7 @@ import { JwtService, type JwtSignOptions } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { createHash, randomBytes } from 'node:crypto';
 import { PrismaService } from '../../prisma/prisma.service.js';
+import { MfaService } from './mfa.service.js';
 import type { LoginDto } from './dto/login.dto.js';
 import type { RegisterDto } from './dto/register.dto.js';
 
@@ -21,7 +22,15 @@ export interface AuthenticatedProfile {
   fullName: string;
   globalRole: string;
   preferredLanguage: string;
+  mfaEnabled: boolean;
 }
+
+export interface MfaRequiredResult {
+  mfaRequired: true;
+  mfaToken: string;
+}
+
+export type LoginResult = MfaRequiredResult | (AuthTokens & { profile: AuthenticatedProfile });
 
 @Injectable()
 export class AuthService {
@@ -29,6 +38,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    private readonly mfaService: MfaService,
   ) {}
 
   async register(dto: RegisterDto): Promise<AuthenticatedProfile> {
@@ -50,7 +60,7 @@ export class AuthService {
     return this.toProfile(user);
   }
 
-  async login(dto: LoginDto, deviceId?: string): Promise<AuthTokens & { profile: AuthenticatedProfile }> {
+  async login(dto: LoginDto, deviceId?: string): Promise<LoginResult> {
     const user = await this.prisma.user.findUnique({ where: { email: dto.email } });
     if (!user || !user.isActive) {
       throw new UnauthorizedException('Invalid email or password');
@@ -60,6 +70,23 @@ export class AuthService {
     if (!passwordValid) {
       throw new UnauthorizedException('Invalid email or password');
     }
+
+    if (user.mfaEnabled) {
+      // Password alone is not enough — hand back a short-lived challenge
+      // token instead of real session tokens until the TOTP code is
+      // verified via POST /auth/mfa/login.
+      return { mfaRequired: true, mfaToken: await this.mfaService.issueChallenge(user.id) };
+    }
+
+    await this.prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
+
+    const tokens = await this.issueTokens(user.id, user.email, deviceId);
+    return { ...tokens, profile: this.toProfile(user) };
+  }
+
+  async loginWithMfa(mfaToken: string, code: string, deviceId?: string): Promise<AuthTokens & { profile: AuthenticatedProfile }> {
+    const userId = await this.mfaService.verifyChallenge(mfaToken, code);
+    const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
 
     await this.prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
 
@@ -88,6 +115,28 @@ export class AuthService {
     });
 
     return this.issueTokens(user.id, user.email, stored.deviceId ?? undefined);
+  }
+
+  /**
+   * A "session" here is an active (not revoked, not expired) refresh token.
+   * This is the real, queryable unit of "device management" available today
+   * — a dedicated UserDevice-based view (friendly names, platform icons) is
+   * a future enhancement once the client sends device metadata on login.
+   */
+  async listSessions(userId: string) {
+    return this.prisma.refreshToken.findMany({
+      where: { userId, revokedAt: null, expiresAt: { gt: new Date() } },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, deviceId: true, createdAt: true, expiresAt: true },
+    });
+  }
+
+  async revokeSession(userId: string, sessionId: string): Promise<void> {
+    const session = await this.prisma.refreshToken.findUnique({ where: { id: sessionId } });
+    if (!session || session.userId !== userId) {
+      throw new NotFoundException('Session not found');
+    }
+    await this.prisma.refreshToken.update({ where: { id: sessionId }, data: { revokedAt: new Date() } });
   }
 
   async getProfile(userId: string): Promise<AuthenticatedProfile> {
@@ -152,6 +201,7 @@ export class AuthService {
     fullName: string;
     globalRole: string;
     preferredLanguage: string;
+    mfaEnabled: boolean;
   }): AuthenticatedProfile {
     return {
       id: user.id,
@@ -159,6 +209,7 @@ export class AuthService {
       fullName: user.fullName,
       globalRole: user.globalRole,
       preferredLanguage: user.preferredLanguage,
+      mfaEnabled: user.mfaEnabled,
     };
   }
 }

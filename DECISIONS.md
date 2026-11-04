@@ -96,3 +96,351 @@ This log records significant technical decisions for the Tangent Smart Manager p
 **Reasoning:** This is a mandatory breaking-change migration, not a discretionary choice — Prisma 7's old `datasource.url` schema syntax simply no longer works (confirmed via `prisma generate` failing with error code P1012).
 
 **Status:** Confirmed — `prisma generate` succeeds. Still unverified against a live database (see IMPLEMENTATION_STATUS.md blockers).
+
+---
+
+## 2026-11-04 — D009: 6-phase delivery plan (regrouping CLAUDE.md's 15 phases)
+
+**Decision:** Track delivery at a coarser 6-phase granularity (see [PHASES.md](PHASES.md)) for planning/reporting, while CLAUDE.md's original 15 phases remain the authoritative scope definition. Phase 1 = CLAUDE.md Phases 01–04 (Foundation & Core Platform).
+
+**Reasoning:** Requested by the project owner. Phases 2–6 group naturally related CLAUDE.md phases (financial core; domain modules; engagement/automation; analytics/resilience; quality/release) so progress can be reported at a size that's meaningful without losing the detailed phase definitions underneath.
+
+**Status:** Confirmed by project owner.
+
+---
+
+## 2026-11-04 — D010: TOTP/MFA library — `otplib` 13.x
+
+**Decision:** Use `otplib`'s class-based `OTP` API (`new OTP({ strategy: 'totp' })`) for MFA secret generation, `otpauth://` URI generation, and code verification.
+
+**Reasoning:** `otplib` 13.x rewrote its API from the older `authenticator` singleton to an explicit `OTP`/`TOTP` class — the old API (`authenticator.generateSecret()`, `.keyuri()`, `.check()`) no longer exists in the installed version and was caught via a real `tsc` error, not assumed from memory. The new API is otherwise the same well-established RFC 6238 implementation used by the previous major version.
+
+**Status:** Confirmed — `backend/src/modules/auth/mfa.service.ts`, type-checks clean.
+
+---
+
+## 2026-11-04 — D011: Secrets encryption — AES-256-GCM via a dedicated `EncryptionService`
+
+**Decision:** A single `EncryptionService` (`backend/src/common/crypto/encryption.service.ts`), built on Node's built-in `crypto` module (no new dependency), provides `encrypt`/`decrypt` for any secret that must be recovered in plaintext later — currently only the MFA TOTP secret (`User.mfaSecretEncrypted`). The AES key comes from a required `ENCRYPTION_KEY` env var (32 bytes, hex), validated at boot.
+
+**Reasoning:** CLAUDE.md §4 requires encrypting sensitive data and AI API credentials at rest. AES-256-GCM (authenticated encryption, random IV per value) is the standard choice; centralizing it in one service — rather than ad hoc `crypto` calls per feature — means Phase 11's AI/WhatsApp provider credentials can reuse the same service later instead of reinventing it.
+
+**Status:** Confirmed — unit-testable in isolation (no DB dependency), used by `MfaService`.
+
+---
+
+## 2026-11-04 — D012: Step-up MFA login flow (challenge token, not account-wide session block)
+
+**Decision:** When a user with `mfaEnabled` logs in, `POST /auth/login` returns `{ mfaRequired: true, mfaToken }` (a short-lived, purpose-scoped JWT) instead of real session tokens. `POST /auth/mfa/login` exchanges that token + a TOTP code for real access/refresh tokens. The challenge token is signed with the same JWT access secret but carries a `purpose: 'mfa_challenge'` claim that `MfaService.verifyChallenge` checks explicitly — it is rejected everywhere else, including by the normal `JwtStrategy`, since it fails that strategy's user-lookup-based validation path by design (it's never sent as a bearer token).
+
+**Reasoning:** This is the standard, secure shape for step-up MFA (password proves identity, TOTP proves possession, neither alone issues a session) and reuses the existing JWT signing infrastructure rather than adding a second token system.
+
+**Status:** Confirmed — type-checks clean; not yet integration-tested against a live database (see IMPLEMENTATION_STATUS.md blockers).
+
+---
+
+## 2026-11-04 — D013: "Sessions" are active RefreshTokens, not a separate UserDevice-backed model (yet)
+
+**Context:** The schema has both `RefreshToken` (real, populated on every login) and `UserDevice` (defined but nothing writes to it — the client doesn't yet send device metadata beyond an optional free-text `X-Device-Id` header).
+
+**Decision:** `GET /auth/sessions` / `DELETE /auth/sessions/:id` operate on active (non-revoked, unexpired) `RefreshToken` rows. The Flutter Settings screen's "Active sessions" section is built on this.
+
+**Reasoning:** Building a UserDevice-backed view with friendly device names/platforms would require the client to collect and send that metadata first — a real but separate piece of work. Sessions-as-refresh-tokens is honest, fully real data (not a stub), and already gives a user the core capability (see and revoke their active logins) without blocking on that follow-up.
+
+**Status:** Confirmed as the current scope. `UserDevice`-based enrichment remains a tracked gap (see IMPLEMENTATION_STATUS.md).
+
+---
+
+## 2026-11-04 — D014: Localization scope — core screens translated, not exhaustive
+
+**Decision:** Real ARB-based localization (`flutter gen-l10n`) is wired end-to-end — `AppLocalizations`, a working language switcher in Settings, and English/Urdu translations for the login flow (including MFA challenge), sidebar navigation, dashboard title, settings section headers, and workspace creation. Deeper copy (dialog bodies in MFA/Admin screens, error message strings from the backend, module placeholder subtext) remains English-only.
+
+**Reasoning:** Demonstrates genuine, verified (automated RTL test — see `app/test/l10n_test.dart`) localization infrastructure and covers the screens every user sees first, rather than claiming full-app translation that isn't actually done. CLAUDE.md's rule against overstating completion applies to localization coverage the same as any other feature.
+
+**Status:** Confirmed, partial by design — see FEATURES.md for the exact boundary.
+
+---
+
+## 2026-11-05 — D015: Single `LedgerService.postEntry()` as the only write path to the ledger
+
+**Decision:** Every financial record — manual entries, the Income/Expense/Transfer convenience endpoints, recurring template runs, and (when built) Phase 06/07 farm/land transactions — posts through one `LedgerService.postEntry()` method, never writes `JournalEntry`/`JournalLine` rows directly.
+
+**Reasoning:** Centralizing balance validation (`assertBalanced`), approval-threshold routing, and receipt-code issuance in one place means every caller gets these guarantees automatically instead of each feature re-implementing (and potentially getting wrong) the double-entry invariant. This was already the stated intent in ACCOUNTING.md before any code existed — this decision confirms it held through implementation.
+
+**Status:** Confirmed — `TransactionsService` and `RecurringService` both depend on `LedgerService` rather than touching Prisma's `journalEntry`/`journalLine` models directly.
+
+---
+
+## 2026-11-05 — D016: Approval threshold is a single per-workspace amount, not per-category
+
+**Decision:** `Workspace.approvalThreshold` (nullable `Decimal`) is the only approval control. An entry whose debit total meets or exceeds it is created `PENDING_APPROVAL`; there's no per-account, per-category, or per-approver-chain configuration.
+
+**Reasoning:** CLAUDE.md asks for "approvals" without specifying granularity. A single workspace-wide threshold is the simplest version that's still genuinely useful (catches large transactions regardless of category) and was buildable without a workflow-engine-shaped schema. Documented here as a deliberate scope boundary, not an oversight — see ACCOUNTING.md "Known simplifications."
+
+**Status:** Confirmed as current scope; revisit if real usage shows a need for per-category rules.
+
+---
+
+## 2026-11-05 — D017: Recurring transactions use explicit "run now," not unattended cron
+
+**Decision:** `RecurringTemplate.nextRunDate` exists and advances correctly on each run, but nothing posts automatically — a user (or, later, an external scheduler) must call `POST .../recurring-templates/:id/run-now`.
+
+**Reasoning:** Unattended execution needs job-scheduler infrastructure (a cron runner, a queue, or a platform cron trigger) that doesn't exist in this environment and is out of scope for the accounting domain model itself. Building the template + manual trigger now means the data model and posting logic are correct and ready — wiring up a scheduler later is additive, not a rework.
+
+**Status:** Confirmed as current scope — see ACCOUNTING.md "Known simplifications" and IMPLEMENTATION_STATUS.md.
+
+---
+
+## 2026-11-05 — D018: Cash flow report is simplified (net CASH/BANK movement only)
+
+**Decision:** The cash-flow report sums the change in CASH/BANK-kind accounts over a period and splits it into total inflows/outflows. It does not categorize movements into operating/investing/financing activities (the standard three-section cash flow statement).
+
+**Reasoning:** A fully categorized cash flow statement requires classifying every account (or every transaction type) into one of the three categories — a real design decision that needs domain input (e.g. is a supplier payment always "operating"? is a land purchase "investing"?) better made once Phase 07 (land) exists and real categorization needs are concrete, rather than guessed now.
+
+**Status:** Confirmed as a documented simplification, not a hidden gap — the report's own field names ("net change," "inflows," "outflows") don't claim to be more than they are.
+
+---
+
+## 2026-11-05 — D019: QR receipt verification is public and minimal-disclosure
+
+**Decision:** `GET /receipts/verify/:code` requires no authentication and returns only `{ documentNumber, memo, amount, postedAt, workspaceName }` — never the internal entry id, the account names involved, or anything else about the issuing workspace.
+
+**Reasoning:** The entire point (matching the reference dashboard mockup's "QR Verified Receipt" card) is that a customer holding a paper/phone receipt can verify it's genuine without an account or credentials. Making it public is the feature, not a gap — but that means the response must be scoped tightly to what a receipt legitimately shows, which is why it's a dedicated minimal DTO rather than exposing the `JournalEntry` model.
+
+**Status:** Confirmed — `ReceiptsService.verify()` hand-picks its return fields rather than serializing the Prisma model.
+
+---
+
+## 2026-11-04 — D020: CORS allows any localhost origin in development only
+
+**Context:** The first live browser run failed to log in with "Could not reach the server." Root cause: `CORS_ORIGIN` was `http://localhost:5173`, but `flutter run -d chrome` serves on a different (often arbitrary) port each run, so every browser request was blocked by CORS preflight.
+
+**Decision:** `main.ts` resolves the CORS origin per environment — when `NODE_ENV=development`, any `http(s)://localhost:<port>` or `127.0.0.1:<port>` origin is allowed via a regex; in every other environment the explicit `CORS_ORIGIN` allowlist is enforced unchanged.
+
+**Reasoning:** Keeps production strict (no wildcard, no regex) while removing a dev-loop failure that would recur on every port change. Verified with a real preflight: `OPTIONS /auth/login` from `Origin: http://localhost:8766` now returns `204` with `Access-Control-Allow-Origin` echoed.
+
+**Status:** Confirmed.
+
+---
+
+## 2026-11-04 — D021: Money display is exact and shows each account's natural balance
+
+**Context:** The first live dashboard showed raw ledger strings (`$5000.0000`), and the Bank & Accounts screen showed Sales Income as `-5,000.00` — correct bookkeeping (credits are negative in the debit-positive ledger) but reads as a loss to a non-accountant.
+
+**Decision:** Two client-side display helpers in `app/lib/core/accounting/money_format.dart`:
+- `formatMoney()` — rounds the server's `numeric(18,4)` string to 2 places with thousands grouping using **BigInt minor-unit arithmetic, never `double`**, so even display rounding follows DECISIONS.md D004. Unit-tested, including a value beyond double precision.
+- `naturalBalance()` — flips the sign for credit-normal account types (LIABILITY, EQUITY, INCOME) for display only. Stored data and every API response are unchanged.
+
+**Status:** Confirmed — verified live (`$5,000.00`; Sales Income `5,000.00`) and by unit tests.
+
+---
+
+## 2026-11-04 — D022: Request validation never converts types implicitly
+
+**Context:** A Phase 3 live test sent a weight as the JSON number `33.5` and it was accepted. `ValidationPipe` had `enableImplicitConversion: true`, which turned the number into the string `"33.5"` before the "decimal string" regex ran. The same hole existed for every money `amount`.
+
+**Decision:** `enableImplicitConversion: false`. Money, weights and areas must arrive as strings; numbers in those fields are rejected with `400`. The only query DTO in use has string fields, so nothing relied on conversion.
+
+**Status:** Confirmed — verified live for money, weights and land area.
+
+---
+
+## 2026-11-04 — D023: Marla = 272.25 sq ft (revenue standard)
+
+**Context:** Land area conversions need a marla size. Punjab revenue records (agricultural land) use 272.25 sq ft (1 kanal = 20 marla = 5,445 sq ft; 1 acre = 8 kanal = 43,560 sq ft). Many urban housing schemes use 225 sq ft.
+
+**Decision:** 272.25 sq ft, since this platform's land module targets agricultural land. Area is stored canonically in sq ft next to the user's original value and unit, so a future per-workspace marla setting can recompute display values without data loss.
+
+**Status:** Confirmed as the default — **business owner to confirm** whether any of their land is measured in 225 sq ft marla.
+
+---
+
+## 2026-11-04 — D024: The ledger checks ownership of every record an entry references
+
+**Context:** Building animal/land tags exposed that `LedgerService.postEntry` connected accounts and contacts by id without checking their workspace: a member of workspace B could post into workspace A's account.
+
+**Decision:** Before posting, every referenced account (must also be active), contact, animal and land parcel is counted with `workspaceId` in the filter; any mismatch is `400` without revealing whether the foreign id exists. This sits in the single write path, so income, expense, transfer, manual, approved and recurring entries are all covered.
+
+**Status:** Confirmed — verified live.
+
+---
+
+## 2026-11-04 — D025: Documents are stored encrypted on local disk; type is sniffed, not trusted
+
+**Context:** Phase 08 needs private file storage now; cloud providers are Phase 10.
+
+**Decision:** Files are encrypted with the existing AES-256-GCM key (`EncryptionService.encryptBuffer`) and written under `STORAGE_DIR/<workspaceId>/<uuid>.bin`; the database keeps only metadata and a SHA-256 of the plaintext. Only JPEG, PNG, WEBP and PDF are accepted, detected from magic bytes (SVG/HTML are excluded as script carriers). Limit 10 MB. The storage layer is isolated in `DocumentsService` so an S3-compatible or cloud backend can replace the disk calls in Phase 10.
+
+**Status:** Confirmed. Note: `STORAGE_DIR` must be included in backups (Phase 10) — losing it loses the files, and losing `ENCRYPTION_KEY` makes them unreadable.
+
+---
+
+## 2026-11-04 — D026: Migrations are generated with `migrate diff` in non-interactive shells
+
+**Context:** `prisma migrate dev` refuses to run without an interactive terminal (the automation environment).
+
+**Decision:** Generate SQL with `prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --script` into a new timestamped folder, review it, then apply with `prisma migrate deploy`. The result is an ordinary migration folder, identical in effect to `migrate dev`.
+
+**Status:** Confirmed — used for `20261104120000_phase3_farm_land_documents`.
+
+---
+
+## 2026-11-04 — D027: In-process scheduler for reminders, email delivery and daily backups
+
+**Decision:** `@nestjs/schedule` runs notification rules every 10 minutes, the email worker every minute, and backups daily at 02:00 inside the backend process. One instance is assumed; the per-user `dedupeKey` (reminders) and the conditional claim on each delivery make a second instance safe anyway.
+
+**Status:** Confirmed. A dedicated job runner (queue) can replace it when there are many workspaces.
+
+---
+
+## 2026-11-04 — D028: Email via SMTP is optional; push waits for Firebase
+
+**Decision:** Email uses any SMTP server configured in `SMTP_*`; without it, email options are hidden/disabled and nothing pretends to send. Push notifications are not built: they need a Firebase project (and Apple push credentials), which are the owner's accounts.
+
+**Status:** Confirmed.
+
+---
+
+## 2026-11-04 — D029: Backups restore only into a new workspace
+
+**Context:** "Verify integrity before restoration" and immutable posted records rule out overwriting a live workspace.
+
+**Decision:** A restore creates a brand-new workspace: every row gets a new id with all references remapped, in one transaction; files are re-encrypted; receipt verification codes (globally unique) are not copied. Backups are encrypted with a key derived (HKDF) from `ENCRYPTION_KEY`, so they can only be restored on a server with the same key. Restoring an uploaded file requires being OWNER of the source workspace (or Super Admin Owner), so a leaked file is useless to other accounts.
+
+**Status:** Confirmed — verified live (identical trial balance and P&L after restore, original untouched).
+
+---
+
+## 2026-11-04 — D030: AI = Claude via the official SDK, drafts only
+
+**Decision:** Anthropic Claude through `@anthropic-ai/sdk`, default model `claude-opus-5-5` (owners can choose Sonnet/Haiku 5.5), structured JSON output, effort `low` (short extraction), and Anthropic's server-side refusal fallback (`fallbacks: "default"`). Keys are per workspace, encrypted, tried in priority order (failover) with monthly limits. The model's output is untrusted: every id is checked against the workspace's records and the result is only ever a PENDING draft. Other vendors plug in behind the same provider call.
+
+**Status:** Built; verified with real (rejected) calls. **Needs a real API key to verify successful extraction.**
+
+---
+
+## 2026-11-04 — D031: Draft approval reuses the manual-entry services and is claimed atomically
+
+**Decision:** Approving a draft validates it with the same DTOs and calls the same services as manual entry (so the ledger, approval threshold and tenant checks apply). `PENDING → APPROVED` is one conditional update; if creating the record fails the draft returns to PENDING.
+
+**Status:** Confirmed — three simultaneous approvals posted exactly one entry.
+
+---
+
+## 2026-11-04 — D032: WhatsApp via the official Cloud API, linked phones only
+
+**Decision:** Meta's WhatsApp Business Cloud API. Webhooks are accepted only with a valid `X-Hub-Signature-256` over the raw body (constant-time compare). A phone is trusted only after the user sends a one-time code (hashed, 15 minutes, 5 attempts). Text messages become drafts through the AI pipeline; voice notes get a "text only" reply until a speech-to-text provider is chosen. Replies are best-effort and logged.
+
+**Status:** Built; verified with signed test webhooks and real (rejected) Graph API calls. **Needs a Meta Business account, a number and a public HTTPS URL to go live.**
+
+---
+
+## 2026-11-04 — D033: Field-level errors travel in `details`
+
+**Decision:** The global error filter puts class-validator messages, or a service's explicit `errors` list, into `details`. The Flutter error helper shows `message` plus `details`, and ignores the generic "Bad Request Exception" text.
+
+**Status:** Confirmed.
+
+---
+
+## 2026-11-04 — D034: The launcher's web server always revalidates
+
+**Context:** Flutter's `main.dart.js` has no content hash; a one-hour cache kept users on the old app after a rebuild.
+
+**Decision:** `Cache-Control: no-cache` with an ETag (size + modified time); unchanged files return 304.
+
+**Status:** Confirmed.
+
+---
+
+## 2026-11-04 — D035: Workspace lists include the caller's role
+
+**Decision:** `GET /workspaces` returns `myRole` per workspace so the app can show owner/admin controls. It only affects what is shown; every route still checks permissions on the server.
+
+**Status:** Confirmed.
+
+---
+
+## 2026-11-04 — D036: Financial report endpoints are FINANCE_VIEWERS-only
+
+**Context:** Building the Phase 12 analytics module's role table (`REPORT_ACCESS`) against the *existing* Phase 2 `reports.controller.ts` (Profit & Loss, trial balance, cash flow) exposed that those endpoints had never had a `RolesGuard` — any workspace member, including STAFF/VIEWER, could read full financial reports.
+
+**Decision:** `reports.controller.ts` now requires `RolesGuard` + `@Roles(...FINANCE_VIEWERS)` (OWNER/ADMIN/MANAGER), the same rule the new `/analytics/*` endpoints use for `financial-summary`/`balance-sheet`/`trial-balance`/`land`. STAFF and VIEWER can still see farm-only reports (`FARM_REPORT_VIEWERS`); only OWNER/ADMIN can see the audit log (`AUDIT_VIEWERS`).
+
+**Reasoning:** Financial detail (account balances, income/expense by category) is not something every workspace member should see by default — consistent with how `animalId`-tagged profit is already hidden from STAFF elsewhere (D024's ownership checks address a different gap: cross-tenant access, not cross-role visibility within a tenant).
+
+**Status:** Confirmed. Verified live: a STAFF token gets `403` on both the new analytics endpoint and the pre-existing P&L endpoint; an OWNER/ADMIN/MANAGER token succeeds on both.
+
+---
+
+## 2026-11-04 — D037: Idempotency keys, not server-side request deduplication by content
+
+**Context:** A client that submits a write (income/expense/etc.) and loses the response before it arrives — a dropped connection, a timeout — cannot tell whether the write actually posted. Retrying blindly risks posting it twice; not retrying risks losing it if it never posted.
+
+**Decision:** The client generates a stable key per logical write attempt (`Idempotency-Key` header, 8–100 chars) and sends the *same* key on every retry of that same attempt. The server caches `(user, key) → (request hash, response)` for 7 days: a retry with a matching key and matching body replays the cached response; a matching key with a *different* body is rejected `422` (a key is a promise about one specific request, never silently reused for a different one); a request that failed before completing does not consume its key, so a corrected retry still succeeds.
+
+**Reasoning:** Deduplicating by request content alone (e.g. "same amount + same accounts within N seconds") is unreliable — two genuinely separate 500.00 expenses to the same account in the same minute are a normal occurrence, not a duplicate. A client-generated key makes "this is the same attempt" an explicit, unambiguous signal instead of a heuristic guess.
+
+**Status:** Confirmed. Verified live (`reports-sync.e2e.mjs`): replay returns the identical entry id; 5 concurrent submissions with one key post exactly once; a malformed key is rejected `400`; keys are scoped per user.
+
+---
+
+## 2026-11-04 — D038: Optimistic concurrency (`If-Match`/412) over last-write-wins, for editable records
+
+**Context:** `Animal` and `LandParcel` have a handful of mutable fields (health status, lease status) that two people could edit around the same time — the offline outbox in particular can retry an edit well after it was queued, by which point the record may have changed.
+
+**Decision:** The client sends the record's `updatedAt` (from its last read) as an `If-Match` header on `PATCH`. If the server's current `updatedAt` doesn't match, the request is refused `412 Precondition Failed` and nothing is applied; the client reloads and the user retries deliberately. This is why the Flutter offline write-outbox (OFFLINE_SYNC.md) deliberately never queues *edits* — only new writes (income/expense/transfer/weight/health) go through the outbox; a status change is sent immediately or not at all, so a queued-then-stale edit can never silently apply.
+
+**Reasoning:** Last-write-wins would satisfy CLAUDE.md's letter ("never silently overwrite a posted financial record" — these aren't posted financial records) but violates its spirit for any shared mutable state: a queued offline edit landing minutes later and silently erasing someone else's more recent change is exactly the kind of silent overwrite the project is trying to avoid everywhere, not only in the ledger.
+
+**Status:** Confirmed. Verified live on both `Animal.update` and `LandParcel.update`: a stale `If-Match` is refused `412` and the current value is unchanged; a current `If-Match` succeeds.
+
+---
+
+## 2026-11-04 — D039: Hand-written OOXML Excel exporter instead of `exceljs`
+
+**Context:** `exceljs` (evaluated for the Phase 12 Excel export) pulls in `archiver`/`archiver-utils`, which in turn pull in vulnerable transitive versions of `minimatch` and `uuid` — `npm audit` flagged them.
+
+**Decision:** Excel export is a small, fully hand-written `.xlsx` writer (`backend/src/modules/analytics/exporters/xlsx.exporter.ts`) built on Node's built-in `zlib` (`deflateRawSync`/`crc32`) for the OOXML zip container — no external dependency at all for this feature.
+
+**Reasoning:** CLAUDE.md §2 ("avoid unnecessary dependencies") and §4 (security) both point the same direction here: the feature's actual requirement — one worksheet per report section, frozen header row, money/decimal number formats, bold totals — is small enough that writing it directly removes an entire dependency tree (and its future vulnerabilities) rather than trading one set of CVEs for a pinned, audited version that will drift again.
+
+**Status:** Confirmed. `npm audit --omit=dev`: 0 vulnerabilities. Output independently validated by opening generated files with Python's `openpyxl` (not just checking that bytes were produced).
+
+---
+
+## 2026-11-04 — D040: KPI card label text is solid white, not `white70`
+
+**Context:** A Phase 14 accessibility pass computed WCAG contrast ratios for every color pair in `AppColors`. The dashboard's KPI cards (`kpi_card.dart`) render their label ("Income", "Expenses", "Net Profit", "Bank Balance") in `Colors.white70` at 13px/w500 over the four accent colors (`incomeGreen`/`expenseRed`/`profitBlue`/`balancePurple`) — measured contrast 2.30–2.88:1, below even the 3:1 minimum for large text, let alone the 4.5:1 required for text this size.
+
+**Decision:** The label now renders in solid `Colors.white`, raising contrast to 3.18–4.55:1 depending on the card color. The bold 22px value text was already solid white and already passed the large-text 3:1 threshold.
+
+**Known remaining gap:** Solid white still falls short of the full 4.5:1 normal-text threshold on `incomeGreen` (3.18:1), `accentBlue` (3.21:1), `profitBlue` (3.68:1) and `expenseRed` (3.91:1) — only `sidebarNavy`/`primaryBlue`-family combinations clear 4.5:1 outright. Reaching full AA for this label at its current size would require either darkening the four accent colors or enlarging/bolding the label past the "large text" threshold (~18.7px bold) — both are visual-design changes to the approved reference palette, out of scope for this QA pass. Tracked as a follow-up for a dedicated design/accessibility pass, not silently left undocumented.
+
+**Also checked, no change needed:** `AppColors.warning` is defined but not referenced anywhere (its 2.15:1 contrast on white is moot). `AppColors.borderLight`/`borderDark` (1.23:1 on their card background) are used for dividers, card outlines, and the *unfocused* input-field border, where Material's filled background already provides most of the boundary cue; flagged for the same future design pass rather than changed blindly here, since `dividerColor` feeds the entire app's visual language.
+
+**Status:** Confirmed (the label fix). The remaining gap and the border-color question are open follow-ups, not silently dropped — see FEATURES.md/IMPLEMENTATION_STATUS.md Phase 6.
+
+---
+
+## 2026-11-04 — D041: `JwtStrategy` rejects any token carrying a `purpose` claim
+
+**Context:** A Phase 14 security sweep found that the MFA challenge token (`MfaService.issueChallenge`, payload `{sub, purpose: 'mfa_challenge'}`, signed with the same `jwt.accessSecret` as a real access token) worked as a full bearer token on every protected route. `JwtStrategy.validate()` only ever read `payload.sub` — it never checked `purpose` — so a stolen or logged challenge token (issued the instant a password is correct, *before* the TOTP code is checked) granted complete account access, bypassing MFA entirely. SECURITY.md had documented the intended behavior ("the challenge token is rejected everywhere else") but the code didn't actually implement that check outside `MfaService.verifyChallenge` itself.
+
+**Decision:** `JwtStrategy.validate()` now throws `UnauthorizedException` immediately if the decoded payload carries a `purpose` claim at all, before even looking up the user. Real access tokens are signed with `{sub, email}` only and never carry `purpose` (verified: the only other `purpose`-carrying token in the codebase is the MFA challenge token itself), so this closes the bypass with no effect on normal sessions.
+
+**Reasoning:** This is the textbook risk of two token types sharing one signing secret and one verification path: the JwtStrategy's job is "is this signature valid," not "is this *token* allowed to do this" — the second question needs an explicit claim check, which this adds as a blanket rule (reject any purpose-scoped token as a bearer token) rather than special-casing `mfa_challenge` specifically, so any *future* purpose-scoped token (e.g. a password-reset token) is safe by default without remembering to update this guard again.
+
+**Status:** Confirmed. Verified live (`backend/scripts/e2e/security-qa.e2e.mjs`): an MFA challenge token used as `Authorization: Bearer <mfaToken>` against `GET /auth/me` now returns 401 (previously 200). Regression: `jwt.strategy.spec.ts` (3/3) plus the full existing auth/MFA live suite still passes.
+
+---
+
+## 2026-11-04 — D042: `CORS_ORIGIN` is a required, validated environment variable outside development
+
+**Context:** The same Phase 14 sweep found `main.ts`'s `resolveCorsOrigin()` fell back to `true` (allow every origin) whenever `CORS_ORIGIN` was unset outside development — and `CORS_ORIGIN` wasn't in `env.validation.ts`'s schema at all, so nothing would have caught a production deploy that forgot to set it. Every *other* required secret (`JWT_ACCESS_SECRET`, `ENCRYPTION_KEY`, ...) already fails the app's boot rather than running half-configured; CORS was the one exception.
+
+**Decision:** `env.validation.ts` now requires `CORS_ORIGIN` whenever `NODE_ENV !== 'development'` (`@ValidateIf`), with a message that says why. `main.ts`'s fallback changed from `?? true` (wildcard-allow) to `?? []` (deny-all) as defense in depth, since validation should make that branch unreachable in practice.
+
+**Reasoning:** Matches this project's existing fail-fast posture (CLAUDE.md §4) instead of being a silent exception to it — a missing production secret should stop the app from starting, never quietly relax a security control.
+
+**Status:** Confirmed. `env.validation.spec.ts` (3/3): development doesn't require it (D020's any-localhost rule applies instead), production without it throws, production with it starts normally.

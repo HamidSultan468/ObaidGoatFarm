@@ -1,9 +1,11 @@
 import { createParamDecorator, type ExecutionContext } from '@nestjs/common';
+import type { GlobalRole } from '@prisma/client';
 
 export interface AuthenticatedUser {
   userId: string;
   email: string;
-  globalRole: string;
+  globalRole: GlobalRole;
+  mfaEnabled: boolean;
 }
 
 export const CurrentUser = createParamDecorator(

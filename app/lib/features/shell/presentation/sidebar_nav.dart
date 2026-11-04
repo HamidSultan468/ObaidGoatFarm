@@ -1,36 +1,63 @@
 import 'package:flutter/material.dart';
+import '../../../core/l10n/generated/app_localizations.dart';
 import '../../../core/theme/app_colors.dart';
 
 class SidebarNavItem {
-  const SidebarNavItem({required this.icon, required this.label, required this.route});
+  const SidebarNavItem({required this.icon, required this.labelOf, required this.route});
   final IconData icon;
-  final String label;
+  final String Function(AppLocalizations) labelOf;
   final String route;
+
+  String label(BuildContext context) => labelOf(AppLocalizations.of(context)!);
 }
 
 const sidebarNavItems = <SidebarNavItem>[
-  SidebarNavItem(icon: Icons.dashboard_rounded, label: 'Dashboard', route: '/dashboard'),
-  SidebarNavItem(icon: Icons.groups_rounded, label: 'Household Accounts', route: '/household-accounts'),
-  SidebarNavItem(icon: Icons.folder_copy_rounded, label: 'My Records', route: '/records'),
-  SidebarNavItem(icon: Icons.pets_rounded, label: 'Goat Farm', route: '/goat-farm'),
-  SidebarNavItem(icon: Icons.landscape_rounded, label: 'Land Records', route: '/land'),
-  SidebarNavItem(icon: Icons.inventory_2_rounded, label: 'Inventory', route: '/inventory'),
-  SidebarNavItem(icon: Icons.handshake_rounded, label: 'Customers & Suppliers', route: '/contacts'),
-  SidebarNavItem(icon: Icons.account_balance_rounded, label: 'Bank & Accounts', route: '/accounts'),
-  SidebarNavItem(icon: Icons.insights_rounded, label: 'Reports & Analytics', route: '/reports'),
-  SidebarNavItem(icon: Icons.smart_toy_rounded, label: 'AI Assistant', route: '/ai-assistant'),
-  SidebarNavItem(icon: Icons.notifications_rounded, label: 'Notifications', route: '/notifications'),
-  SidebarNavItem(icon: Icons.settings_rounded, label: 'Settings', route: '/settings'),
+  SidebarNavItem(icon: Icons.dashboard_rounded, labelOf: _navDashboard, route: '/dashboard'),
+  SidebarNavItem(icon: Icons.groups_rounded, labelOf: _navHouseholdAccounts, route: '/household-accounts'),
+  SidebarNavItem(icon: Icons.folder_copy_rounded, labelOf: _navMyRecords, route: '/records'),
+  SidebarNavItem(icon: Icons.pets_rounded, labelOf: _navGoatFarm, route: '/goat-farm'),
+  SidebarNavItem(icon: Icons.landscape_rounded, labelOf: _navLandRecords, route: '/land'),
+  SidebarNavItem(icon: Icons.inventory_2_rounded, labelOf: _navInventory, route: '/inventory'),
+  SidebarNavItem(icon: Icons.handshake_rounded, labelOf: _navContacts, route: '/contacts'),
+  SidebarNavItem(icon: Icons.account_balance_rounded, labelOf: _navAccounts, route: '/accounts'),
+  SidebarNavItem(icon: Icons.insights_rounded, labelOf: _navReports, route: '/reports'),
+  SidebarNavItem(icon: Icons.smart_toy_rounded, labelOf: _navAiAssistant, route: '/ai-assistant'),
+  SidebarNavItem(icon: Icons.notifications_rounded, labelOf: _navNotifications, route: '/notifications'),
+  SidebarNavItem(icon: Icons.settings_rounded, labelOf: _navSettings, route: '/settings'),
 ];
 
+const adminConsoleNavItem = SidebarNavItem(
+  icon: Icons.admin_panel_settings_rounded,
+  labelOf: _navAdminConsole,
+  route: '/admin',
+);
+
+// Top-level tear-offs (not closures) so the nav item lists above can stay const.
+String _navDashboard(AppLocalizations l10n) => l10n.navDashboard;
+String _navHouseholdAccounts(AppLocalizations l10n) => l10n.navHouseholdAccounts;
+String _navMyRecords(AppLocalizations l10n) => l10n.navMyRecords;
+String _navGoatFarm(AppLocalizations l10n) => l10n.navGoatFarm;
+String _navLandRecords(AppLocalizations l10n) => l10n.navLandRecords;
+String _navInventory(AppLocalizations l10n) => l10n.navInventory;
+String _navContacts(AppLocalizations l10n) => l10n.navContacts;
+String _navAccounts(AppLocalizations l10n) => l10n.navAccounts;
+String _navReports(AppLocalizations l10n) => l10n.navReports;
+String _navAiAssistant(AppLocalizations l10n) => l10n.navAiAssistant;
+String _navNotifications(AppLocalizations l10n) => l10n.navNotifications;
+String _navSettings(AppLocalizations l10n) => l10n.navSettings;
+String _navAdminConsole(AppLocalizations l10n) => l10n.navAdminConsole;
+
 class SidebarNav extends StatelessWidget {
-  const SidebarNav({super.key, required this.currentRoute, required this.onSelect});
+  const SidebarNav({super.key, required this.currentRoute, required this.onSelect, this.showAdminConsole = false});
 
   final String currentRoute;
   final ValueChanged<String> onSelect;
+  final bool showAdminConsole;
 
   @override
   Widget build(BuildContext context) {
+    final items = [...sidebarNavItems, if (showAdminConsole) adminConsoleNavItem];
+
     return Container(
       width: 248,
       color: AppColors.sidebarNavy,
@@ -55,7 +82,7 @@ class SidebarNav extends StatelessWidget {
           Expanded(
             child: ListView(
               padding: const EdgeInsets.symmetric(horizontal: 12),
-              children: sidebarNavItems.map((item) => _NavTile(item: item, isActive: item.route == currentRoute, onTap: () => onSelect(item.route))).toList(),
+              children: items.map((item) => _NavTile(item: item, isActive: item.route == currentRoute, onTap: () => onSelect(item.route))).toList(),
             ),
           ),
         ],
@@ -89,7 +116,7 @@ class _NavTile extends StatelessWidget {
                 const SizedBox(width: 14),
                 Expanded(
                   child: Text(
-                    item.label,
+                    item.label(context),
                     style: TextStyle(
                       color: isActive ? Colors.white : Colors.white70,
                       fontWeight: isActive ? FontWeight.w600 : FontWeight.w500,

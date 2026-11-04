@@ -13,10 +13,9 @@ final workspaceControllerProvider = NotifierProvider<WorkspaceController, Worksp
   WorkspaceController.new,
 );
 
-/// Loads the caller's workspaces right after authentication and keeps the
-/// first one selected. Multi-workspace switching exists in the backend
-/// (`GET /workspaces` returns all of them) but there's no switcher UI yet —
-/// see FEATURES.md.
+/// Loads the caller's workspaces right after authentication and selects the
+/// first one. The top-bar switcher calls [select]; every workspace-scoped
+/// provider watches this state, so switching reloads all screens' data.
 class WorkspaceController extends Notifier<WorkspaceState> {
   @override
   WorkspaceState build() {
@@ -56,6 +55,17 @@ class WorkspaceController extends Notifier<WorkspaceState> {
     if (current is WorkspaceSelected) {
       state = WorkspaceSelected(workspace, current.all);
     }
+  }
+
+  /// Re-reads the list (e.g. after a backup was restored into a new
+  /// workspace) and selects [workspaceId] when it is present.
+  Future<void> reloadAndSelect(String workspaceId) async {
+    final all = await _repository.listMine();
+    if (all.isEmpty) {
+      state = const WorkspaceNoneExist();
+      return;
+    }
+    state = WorkspaceSelected(all.firstWhere((w) => w.id == workspaceId, orElse: () => all.first), all);
   }
 
   String _messageFor(DioException error) {

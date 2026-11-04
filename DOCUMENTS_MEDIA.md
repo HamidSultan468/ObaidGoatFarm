@@ -1,20 +1,21 @@
 # Documents & Record Management (Phase 08)
 
-**Status: not started.**
+**Status: core built and verified live (2026-11-04).**
 
-## Planned scope (from CLAUDE.md §Phase 08)
+## What exists
 
-- Organized, module-specific data folders (goat farm documents separate from land documents, separate from financial receipts, etc.)
-- Multiple images/documents per record
-- Document scanning and OCR extraction
-- Voice-to-record draft creation
-- Ready-made and custom templates (see [TEMPLATES.md](TEMPLATES.md))
-- Universal "Add New" functionality (a single entry point that routes to the right record type)
-- Record history, search, filtering, exports
-- Private, access-controlled file storage
+- **Attachments** (`backend/src/modules/documents/`) on animals, land parcels, transactions, contacts, or as general documents; the owning record must be in the same workspace.
+- **Storage**: AES-256-GCM encrypted files under `STORAGE_DIR/<workspaceId>/` (default `backend/storage/`, git-ignored); metadata and a SHA-256 in the `attachments` table; integrity verified on every download (DECISIONS.md D025).
+- **Hardening**: type detected from file content (JPEG, PNG, WEBP, PDF only), 10 MB limit, sanitized filenames, `no-store` + `nosniff` downloads, RFC 6266 filenames (Urdu names preserved). Upload: OWNER/ADMIN/MANAGER/STAFF; delete: OWNER/ADMIN/MANAGER; both audit-logged.
+- **Flutter**: reusable Photos & documents card (animal and land pages), My Records library (filter by module, search), universal **Add new** menu in the top bar.
 
-## Notes for when this phase starts
+## Operational notes
 
-- File storage backend (local disk vs. S3-compatible object storage vs. the cloud providers in [BACKUP_STORAGE.md](BACKUP_STORAGE.md)) needs a decision — not yet made.
-- OCR and voice-to-draft likely depend on the AI provider integration in [AI_AUTOMATION.md](AI_AUTOMATION.md) (Phase 11); per CLAUDE.md, any AI-extracted data is a *draft* requiring human review before it can be saved as a real record — never auto-posted, same rule as WhatsApp imports.
-- Access control here follows the same `WorkspaceGuard`/`RolesGuard` pattern already established for every other tenant-scoped resource — see [SECURITY.md](SECURITY.md).
+- Back up `STORAGE_DIR` together with the database, and keep `ENCRYPTION_KEY` safe: without the key the files cannot be decrypted.
+
+## Not yet built
+
+- Document scanning/OCR and voice-to-record drafts — need the AI integration ([AI_AUTOMATION.md](AI_AUTOMATION.md), Phase 11); extracted data must remain a draft until a human approves it.
+- Ready-made and custom templates ([TEMPLATES.md](TEMPLATES.md)).
+- Exports and record-history views.
+- Cloud storage backends ([BACKUP_STORAGE.md](BACKUP_STORAGE.md), Phase 10).

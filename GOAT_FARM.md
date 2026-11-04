@@ -1,27 +1,21 @@
 # Goat Farm Management (Phase 06)
 
-**Status: not started.** This document records planned scope so Phase 06 has a clear starting brief. See [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) for current state.
+**Status: core built and verified live (2026-11-04).** See [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) for the verification record.
 
-## What exists today
+## What exists
 
-A minimal `Animal` stub only (`id`, `workspaceId`, `tagNumber`, `healthStatus`), built solely so the dashboard's "Total Goats" widget can query a real (currently zero) count instead of showing fabricated data. No profile detail, no endpoints beyond the raw table, no UI.
+- **Animals** (`backend/src/modules/farm/animals/`): profile, pedigree (sire must be male, dam female, same workspace, never self), ownership, dietary restrictions, lifecycle (ACTIVE → SOLD/DECEASED, one-way, history kept) separate from health status.
+- **Health & vet records** with medicine, dosage, veterinarian and next-due date; **weights** as exact decimals.
+- **Breeding** (`farm/breeding/`): mating (natural/AI; farm buck or outside sire) → pregnant / not pregnant / aborted → kidding. Expected kidding = mating + 150 days by default (`gestation.util.ts`). A doe can have only one open record. Kidding registers live kids as new animals in one transaction.
+- **Overview & schedule** (`farm/overview/`): herd counts, pregnant count, health follow-ups due within 30 days (overdue flagged; resolved once a newer record of the same type exists), expected kiddings.
+- **Finances**: farm money never lives in this module. Purchases, sales, feed and vet costs are ordinary income/expense entries tagged with `animalId`; each animal's page shows income/expense/net from those entries.
+- **Flutter**: `app/lib/features/goat_farm/` (Goat Farm screen with Herd/Breeding/Schedule tabs, animal detail, dialogs) and the dashboard Goat Farm card.
+- **Permissions**: any member reads; OWNER/ADMIN/MANAGER/STAFF record; OWNER/ADMIN/MANAGER mark exits and delete health records. All writes are audit-logged.
 
-## Planned scope (from CLAUDE.md §Phase 06)
+## Not yet built
 
-- A separate profile per animal, with a unique identification number
-- Multiple photographs and document attachments per animal
-- Breed, age, gender, weight, ownership, and pedigree details
-- Health and veterinary records
-- Medication, vaccination, and deworming schedules
-- Breeding, mating, pregnancy, and expected kidding records
-- Birth, offspring, complications, and growth tracking
-- Feed management and dietary restrictions
-- Veterinarian schedules and automatic reminders
-- Ready-made templates for every record type (see [TEMPLATES.md](TEMPLATES.md))
-- Manual entry and authorized WhatsApp commands (see [WHATSAPP_INTEGRATION.md](WHATSAPP_INTEGRATION.md)) — with mandatory human verification before any imported record is saved, per CLAUDE.md's rule that AI/WhatsApp imports never auto-post
-
-## Notes for when this phase starts
-
-- Photo/document attachments depend on [DOCUMENTS_MEDIA.md](DOCUMENTS_MEDIA.md) (Phase 08) being usable, or at least a minimal file-storage path existing.
-- Reminders (vaccination, vet schedules) depend on [NOTIFICATIONS.md](NOTIFICATIONS.md) (Phase 09).
-- This is the project's namesake module — worth prioritizing once Phase 05's core ledger exists, since farm expenses/income should post against the real accounting engine rather than existing in isolation.
+- Full profile editing in the UI (API supports it).
+- Feed inventory and rations (costs are tracked via tagged expenses).
+- Automatic reminders/push notifications — the schedule exists; delivery is Phase 09 ([NOTIFICATIONS.md](NOTIFICATIONS.md)).
+- Ready-made record templates ([TEMPLATES.md](TEMPLATES.md)) and WhatsApp commands ([WHATSAPP_INTEGRATION.md](WHATSAPP_INTEGRATION.md)) — any imported record must stay a draft until a human verifies it.
+- Urdu strings for the Goat Farm screens.

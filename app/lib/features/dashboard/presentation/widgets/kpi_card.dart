@@ -41,8 +41,11 @@ class KpiCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
+                  // Solid white, not white70: at this font size/weight the
+                  // label needs every bit of contrast it can get against
+                  // the accent-colored background (see DECISIONS.md D040).
                   label,
-                  style: const TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w500),
+                  style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
                 ),
                 const SizedBox(height: 6),
                 isLoading

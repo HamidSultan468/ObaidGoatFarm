@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
+import '../../../core/l10n/generated/app_localizations.dart';
+import 'sidebar_nav.dart';
 
 /// Honest placeholder for a sidebar destination whose module hasn't been
 /// built yet. Navigating here is real (the route exists and works); the
 /// module behind it is simply not implemented yet.
 class ModulePlaceholderScreen extends StatelessWidget {
-  const ModulePlaceholderScreen({super.key, required this.title, required this.icon});
+  const ModulePlaceholderScreen({super.key, required this.item});
 
-  final String title;
-  final IconData icon;
+  final SidebarNavItem item;
 
   @override
   Widget build(BuildContext context) {
@@ -15,11 +16,11 @@ class ModulePlaceholderScreen extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 48, color: Theme.of(context).colorScheme.primary),
+          Icon(item.icon, size: 48, color: Theme.of(context).colorScheme.primary),
           const SizedBox(height: 16),
-          Text(title, style: Theme.of(context).textTheme.titleLarge),
+          Text(item.label(context), style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 8),
-          Text('This module is not built yet.', style: Theme.of(context).textTheme.bodyMedium),
+          Text(AppLocalizations.of(context)!.notBuiltYet, style: Theme.of(context).textTheme.bodyMedium),
         ],
       ),
     );

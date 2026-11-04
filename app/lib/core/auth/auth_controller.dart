@@ -43,12 +43,50 @@ class AuthController extends Notifier<AuthState> {
   Future<bool> login({required String email, required String password}) async {
     state = const AuthLoading();
     try {
-      final profile = await _repository.login(email: email, password: password);
-      state = AuthAuthenticated(profile);
-      return true;
+      final result = await _repository.login(email: email, password: password);
+      switch (result) {
+        case LoginSucceeded(:final profile):
+          state = AuthAuthenticated(profile);
+          return true;
+        case LoginNeedsMfa(:final mfaToken):
+          state = AuthMfaRequired(mfaToken);
+          return true;
+      }
     } on DioException catch (error) {
       state = AuthUnauthenticated(errorMessage: _messageFor(error));
       return false;
+    }
+  }
+
+  Future<bool> completeMfaLogin(String code) async {
+    final current = state;
+    if (current is! AuthMfaRequired) return false;
+
+    state = const AuthLoading();
+    try {
+      final profile = await _repository.completeMfaLogin(mfaToken: current.mfaToken, code: code);
+      state = AuthAuthenticated(profile);
+      return true;
+    } on DioException catch (error) {
+      state = AuthMfaRequired(current.mfaToken, errorMessage: _messageFor(error));
+      return false;
+    }
+  }
+
+  void cancelMfaChallenge() {
+    state = const AuthUnauthenticated();
+  }
+
+  /// Re-fetches the profile without disturbing the UI with a loading state
+  /// — used after an in-place account change (e.g. MFA enabled/disabled)
+  /// where the user is already looking at an authenticated screen.
+  Future<void> refreshProfile() async {
+    if (state is! AuthAuthenticated) return;
+    try {
+      state = AuthAuthenticated(await _repository.fetchCurrentProfile());
+    } on DioException {
+      // Leave the stale profile in place rather than booting the user out
+      // for a transient network error.
     }
   }
 

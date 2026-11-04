@@ -1,5 +1,6 @@
 import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service.js';
+import { AccountsService } from '../accounting/accounts/accounts.service.js';
 import type { CreateWorkspaceDto } from './dto/create-workspace.dto.js';
 import type { InviteMemberDto } from './dto/invite-member.dto.js';
 
@@ -7,12 +8,15 @@ const SLUG_COLLISION_RETRY_LIMIT = 20;
 
 @Injectable()
 export class WorkspacesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly accountsService: AccountsService,
+  ) {}
 
   async create(ownerUserId: string, dto: CreateWorkspaceDto) {
     const slug = await this.resolveUniqueSlug(dto.slug ?? dto.name);
 
-    return this.prisma.workspace.create({
+    const workspace = await this.prisma.workspace.create({
       data: {
         name: dto.name,
         slug,
@@ -21,13 +25,26 @@ export class WorkspacesService {
         },
       },
     });
+
+    // Every workspace needs somewhere real to post its first transaction —
+    // see AccountsService.seedDefaultChartOfAccounts (ACCOUNTING.md).
+    await this.accountsService.seedDefaultChartOfAccounts(workspace.id);
+
+    return { ...workspace, myRole: 'OWNER' as const };
   }
 
+  /**
+   * The caller's workspaces, each with `myRole` so the client can decide
+   * which controls to show. Authorization is still enforced server-side
+   * on every route; this field only drives the UI.
+   */
   async findAllForUser(userId: string) {
-    return this.prisma.workspace.findMany({
+    const workspaces = await this.prisma.workspace.findMany({
       where: { users: { some: { userId, isActive: true } }, isActive: true },
+      include: { users: { where: { userId, isActive: true }, select: { role: true } } },
       orderBy: { createdAt: 'asc' },
     });
+    return workspaces.map(({ users, ...workspace }) => ({ ...workspace, myRole: users[0]?.role }));
   }
 
   async findOne(workspaceId: string) {
