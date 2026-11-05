@@ -1,6 +1,6 @@
 # Accounting Module (Phase 05 — Financial Management Core)
 
-**Status: 🟡 core built and statically verified; not yet integration-tested against a live database.** See [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) for the verification boundary.
+**Status: ✅ built and verified live against a real PostgreSQL database**, including every Flutter screen named below (Budgets and Recurring Templates as of 2026-11-05). See [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) for the verification boundary.
 
 ## What's built
 
@@ -31,10 +31,13 @@ A `Contact` (CUSTOMER/SUPPLIER/BOTH) has no parallel bookkeeping of its own — 
 - **Liquid balance** — sum of all CASH/BANK account balances; powers the dashboard's Bank Balance KPI.
 
 ### Budgets (`budgets/`)
-A budget is an amount for one account over one period; `GET .../budgets/:id/progress` compares it to actual posted activity on that account within the same period.
+A budget is an amount for one account over one period; `GET .../budgets/:id/progress` compares it to actual posted activity on that account within the same period. Flutter: a Budgets tab (Bank & Accounts screen) shows each budget as a progress bar against actual spend, with the bar turning red past 100%.
 
 ### Recurring transactions (`recurring/`)
-A reusable template (amount, accounts, frequency) with a `run-now` endpoint that posts through the same `LedgerService` and advances `nextRunDate`. **There is no unattended scheduler** — nothing posts automatically yet; see "Known simplifications."
+A reusable template (amount, accounts, frequency) with a `run-now` endpoint that posts through the same `LedgerService` and advances `nextRunDate`. **There is no unattended scheduler** — nothing posts automatically yet; see "Known simplifications." Flutter: a Recurring tab (Bank & Accounts screen) lists templates with an active/inactive switch and a manual "Run now" button.
+
+### Bank reconciliation (`accounts/.../lines/:lineId/reconcile`)
+Any posted journal line can be flagged (or unflagged) as matched against a real bank statement — `JournalLine.reconciledAt`, set/cleared via `PATCH .../accounts/:accountId/lines/:lineId/reconcile`, OWNER/ADMIN/MANAGER only. This never changes the amount or the entry itself, only the checklist flag. Flutter: the Account Statement sheet shows a checkbox per line and a "X of Y reconciled" count; a failed toggle rolls back to the previous state instead of leaving the UI claiming something the server rejected.
 
 ### QR-verified receipts (`receipts/`)
 An income entry can request a `verificationCode` (shown in the reference dashboard mockup as "QR Verified Receipt"). `GET /receipts/verify/:code` is **public** (no auth) — anyone holding the printed/scanned receipt can confirm it's genuine, without exposing anything beyond the amount, memo, document number, date, and issuing workspace's name.
@@ -51,5 +54,5 @@ An income entry can request a `verificationCode` (shown in the reference dashboa
 
 - ✅ `assertBalanced` — 6/6 unit tests, DB-free, including the floating-point-failure proof pattern established by `Money`.
 - ✅ Whole-backend type-check clean through every file in this module.
-- ✅ Flutter: `flutter analyze` 0 issues, existing widget/l10n tests still passing.
-- 🔴 Not yet exercised against a live database — no PostgreSQL instance is available in this environment (see IMPLEMENTATION_STATUS.md "Blockers"). Every endpoint is written and statically verified but unproven end-to-end.
+- ✅ Flutter: `flutter analyze` 0 issues; widget tests for Budgets/Recurring (4) plus the existing accounting/l10n suites.
+- ✅ Verified live against a real PostgreSQL database — every endpoint in this module, including the 2026-11-05 additions (budgets progress math, recurring run-now balance posting and next-run-date advance, reconciliation toggling and its tenant/account-ownership check) — see `backend/scripts/e2e/completeness.e2e.mjs` and IMPLEMENTATION_STATUS.md.

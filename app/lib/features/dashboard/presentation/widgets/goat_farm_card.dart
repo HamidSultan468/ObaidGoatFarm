@@ -40,11 +40,21 @@ class GoatFarmCard extends ConsumerWidget {
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      '${o.activeAnimals} animals · ${o.females} F / ${o.males} M · ${o.pregnant} pregnant'
-                      '${o.needsAttention > 0 ? ' · ${o.needsAttention} need attention' : ''}',
+                    Row(
+                      children: [
+                        Expanded(child: _Stat(label: 'Total', value: '${o.activeAnimals}', color: scheme.primary)),
+                        Expanded(child: _Stat(label: 'Healthy', value: '${o.healthy}', color: const Color(0xFF22A559))),
+                        Expanded(
+                          child: _Stat(
+                            label: 'Attention',
+                            value: '${o.needsAttention}',
+                            color: o.needsAttention > 0 ? const Color(0xFFE5484D) : scheme.onSurfaceVariant,
+                          ),
+                        ),
+                        Expanded(child: _Stat(label: 'Pregnant', value: '${o.pregnant}', color: const Color(0xFF8B5CF6))),
+                      ],
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 12),
                     if (tasks.isEmpty)
                       Text('Nothing due in the next 30 days.', style: Theme.of(context).textTheme.bodySmall)
                     else
@@ -65,6 +75,24 @@ class GoatFarmCard extends ConsumerWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _Stat extends StatelessWidget {
+  const _Stat({required this.label, required this.value, required this.color});
+  final String label;
+  final String value;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Text(value, style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: color)),
+        const SizedBox(height: 2),
+        Text(label, style: Theme.of(context).textTheme.bodySmall),
+      ],
     );
   }
 }

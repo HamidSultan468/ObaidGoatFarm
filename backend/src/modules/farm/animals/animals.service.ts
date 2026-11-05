@@ -94,6 +94,9 @@ export class AnimalsService {
       throw new BadRequestException('An animal cannot be its own parent');
     }
     await this.assertParents(workspaceId, dto.sireId, dto.damId);
+    if (dto.photoAttachmentId) {
+      await this.assertPhotoAttachment(workspaceId, animalId, dto.photoAttachmentId);
+    }
     try {
       return await this.prisma.animal.update({
         where: { id: animalId },
@@ -211,6 +214,16 @@ export class AnimalsService {
     }
     if (parent.sex !== sex) {
       throw new BadRequestException(`The ${label} must be ${sex.toLowerCase()}`);
+    }
+  }
+
+  /** The photo must be an existing attachment in this workspace, tagged to this animal. */
+  private async assertPhotoAttachment(workspaceId: string, animalId: string, attachmentId: string) {
+    const attachment = await this.prisma.attachment.findFirst({
+      where: { id: attachmentId, workspaceId, module: 'ANIMAL', recordId: animalId },
+    });
+    if (!attachment) {
+      throw new BadRequestException('Photo must be an uploaded attachment belonging to this animal');
     }
   }
 

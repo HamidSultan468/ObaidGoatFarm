@@ -21,4 +21,20 @@ class WorkspaceRepository {
   Future<void> inviteMember({required String workspaceId, required String email, required String role}) async {
     await _apiClient.raw.post('/workspaces/$workspaceId/members', data: {'email': email, 'role': role});
   }
+
+  /// Every active member — the "Staff" tab's data. Any active member may view.
+  Future<List<WorkspaceMember>> listMembers(String workspaceId) async {
+    final response = await _apiClient.raw.get('/workspaces/$workspaceId/members');
+    return (response.data as List).map((json) => WorkspaceMember.fromJson(json as Map<String, dynamic>)).toList();
+  }
+
+  /// `role` is one of ADMIN/MANAGER/STAFF/VIEWER — OWNER is never assignable here.
+  Future<void> setMemberRole({required String workspaceId, required String membershipId, required String role}) async {
+    await _apiClient.raw.patch('/workspaces/$workspaceId/members/$membershipId/role', data: {'role': role});
+  }
+
+  /// Deactivates the membership (never a hard delete — their history is preserved).
+  Future<void> removeMember({required String workspaceId, required String membershipId}) async {
+    await _apiClient.raw.delete('/workspaces/$workspaceId/members/$membershipId');
+  }
 }

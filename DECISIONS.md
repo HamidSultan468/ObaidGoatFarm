@@ -444,3 +444,109 @@ This log records significant technical decisions for the Tangent Smart Manager p
 **Reasoning:** Matches this project's existing fail-fast posture (CLAUDE.md §4) instead of being a silent exception to it — a missing production secret should stop the app from starting, never quietly relax a security control.
 
 **Status:** Confirmed. `env.validation.spec.ts` (3/3): development doesn't require it (D020's any-localhost rule applies instead), production without it throws, production with it starts normally.
+
+---
+
+## 2026-11-05 — D043: The dashboard matches the reference mockup's real functionality, not its marketing flourishes
+
+**Context:** Rebuilding the dashboard against `Tangent Smart Manager Dashboard.png` (the originally approved reference image). That image is a marketing/concept render: alongside real-looking cards it also shows a phone mockup and a promotional side panel ("Your Smart Life, Our Priority"), a calculator tile, a voice-command tile, a row of record-type templates (Sales Invoice, Purchase Invoice, ...), a specific fabricated QR-verified receipt (a named client, a specific amount), and an Admin Control Panel full of feature on/off toggles (AI Assistant, Multi-Client System, Advanced Reports, ...).
+
+**Decision:** Rebuilt every panel that maps to a real, already-built feature (KPI cards, a real Financial Overview chart, an expanded real Quick Actions grid, a real inline Notifications panel, Recent Transactions, Goat Farm stats, Cloud Backup Status) to match the mockup's layout and visual weight. Left out, deliberately: the phone mockup and promotional panel (not an app screen at all), the calculator and voice-command tiles (no such feature exists anywhere in the app), the record-templates row (TEMPLATES.md: not built), the specific demo QR receipt (would be fabricated data on a real dashboard), the Admin Control Panel's feature toggles (ADMIN_CONSOLE.md: feature flags/API settings/themes/logs are not built — only workspace/user activation and global roles are, and those already have their own real screen), and the four cloud-provider icons on the backup card (BACKUP_STORAGE.md: Drive/OneDrive/Dropbox/S3 adapters are not built — only local disk storage is).
+
+**Reasoning:** CLAUDE.md §2 is explicit: never introduce mock functionality into production modules, never placeholder a completed feature. A toggle that doesn't toggle anything, or a receipt that was never actually issued, would be exactly that — regardless of how closely it matched a reference image. The instruction to "make it match the image" is satisfied by matching its genuine structure and style with genuine data, not by copying content that has nothing behind it.
+
+**Status:** Confirmed. Verified live in Chrome against the real backend and database: KPI cards, Financial Overview chart (period switch verified: This month/Last 3 months/This year all fetch and render), Quick Actions (all 6 tiles call the real feature they name), Notifications panel, Recent Transactions table, Goat Farm stats, Cloud Backup Status badge — no console errors. `flutter analyze` 0 issues, `flutter test` 63/63.
+
+---
+
+## 2026-11-05 — D044: Docker install succeeded; its WSL2 backend is blocked on a BIOS setting, not software
+
+**Context:** Attempting to set up this machine for Phase 15's Docker-based deployment prep. This session has no administrator token (confirmed: `IsInRole(Administrator)` is `False`, and even a read-only `Get-WindowsOptionalFeature` query fails with "requires elevation"). Despite that, `winget install Docker.DockerDesktop` and `wsl --install --no-distribution` both completed successfully (exit 0) — evidently neither needed an interactive elevation prompt in this environment. `wsl --status` afterward reported: "WSL2 is unable to start since virtualization is not enabled on this machine... ensure virtualization is turned on in your computer's firmware settings." `Get-CimInstance Win32_ComputerSystem` confirms this is a real Dell OptiPlex 7010 desktop (not a VM), a model generation where Intel VT-x commonly ships disabled in BIOS by default.
+
+**Decision:** No further software action is possible here — enabling CPU virtualization (Intel VT-x) requires physically rebooting into BIOS/UEFI setup (on Dell desktops, typically F2 at boot) and enabling it there, then restarting Windows. This is recorded as the single concrete blocking step for Phase 15's Docker work, rather than a vague "Docker isn't installed" note.
+
+**Status:** Open — needs the machine's owner to perform the BIOS change; nothing else in Phase 15's Docker prep (Dockerfile, docker-compose.yml, the CI workflow) is blocked on this specifically, since CI runs on GitHub's own runners, not this machine.
+
+---
+
+## 2026-11-05 — D045: Device metadata is client-reported and optional, joined by the same `deviceId` the session already carries
+
+**Context:** "Active sessions" (`/auth/sessions`) showed only an opaque `deviceId` — real device/session management (FR-3.5) needs a friendly name and platform. A `UserDevice` table already existed in the schema for this but was never wired to anything, and had no column linking it back to a `RefreshToken.deviceId`.
+
+**Decision:** The Flutter client generates a stable per-install id once (`core/api/device_info.dart`, stored via the existing secure `TokenStorage`) and reports it plus a platform-derived name (`defaultTargetPlatform`/`kIsWeb` — never `dart:io`'s `Platform`, which doesn't compile for the web build target) on every request via `X-Device-Id`/`X-Device-Name`/`X-Device-Platform` headers. `AuthService.issueTokens` upserts a `UserDevice` row (added `deviceId` column, `@@unique([userId, deviceId])`) only when all three are present; `listSessions` left-joins on that id. A session from before this existed, or from a client that omits the headers, simply shows the raw `deviceId` (or "Unknown device") — never an error.
+
+**Reasoning:** No new dependency (`device_info_plus` would give a real model name but adds a plugin this project otherwise doesn't need) and no breaking change to existing sessions. Headers rather than a login-body field, to match the existing `X-Device-Id` convention and so refresh/other calls can carry the same identity without threading it through every DTO.
+
+**Status:** Confirmed. Verified live: a session carries the exact name/platform sent at login; a session from a login with no device headers (or predating this change) degrades to `null`/`null` rather than erroring.
+
+---
+
+## 2026-11-05 — D046: Every money field returned by the API is Money-formatted, even ones that were never user-facing before
+
+**Context:** Building the Budgets/Recurring Templates Flutter screens surfaced that `Budget.amount` and `RecurringTemplate.amount` were returned as whatever Prisma's `Decimal` JSON serialization happened to produce (e.g. `"1000"` instead of `"1000.0000"`) — the only money fields in the whole API that hadn't been routed through `Money.toFixed(4)` before being sent, because until now nothing displayed them directly.
+
+**Decision:** `BudgetsService`/`RecurringService` now map every response through a small `withExactAmount()` helper (`Money.from(...).toFixed(4)`) before returning it — create, list, and the nested budget inside `getProgress`.
+
+**Reasoning:** DECISIONS.md D004's rule ("never float, always exact") is about more than storage — an inconsistently-formatted decimal string is a smaller version of the same risk: a client that assumes a fixed 4-decimal shape (as every other money field in this API already guarantees) could parse `"1000"` incorrectly. Found by a live E2E assertion expecting the established shape, not by inspection — a reminder that the Flutter side exercising a backend response for the first time is itself a useful check.
+
+**Status:** Confirmed. `completeness.e2e.mjs` asserts the exact 4-decimal form on both endpoints.
+
+---
+
+## 2026-11-05 — D047: Animal profile photo reuses the existing Attachment pipeline instead of a new upload path
+
+**Context:** Request to add animal photos. The app already has a generic, encrypted, authenticated attachment system (`Attachment`/`AttachmentModule.ANIMAL`) for arbitrary animal documents.
+
+**Decision:** Added `Animal.photoAttachmentId String? @unique`, a one-to-one relation to `Attachment` (`onDelete: SetNull`). No new upload endpoint: the client uploads an image via the existing `POST /workspaces/:id/attachments` (module=ANIMAL, recordId=animal.id), then `PATCH`es the animal with `{ photoAttachmentId }`. The service (`AnimalsService.assertPhotoAttachment`) requires the referenced attachment to belong to this workspace, be `module=ANIMAL`, and have `recordId` equal to this animal's id — an attachment can't be "borrowed" as another animal's or a GENERAL document's photo. `photoAttachmentId: null` clears it.
+
+**Reasoning:** No parallel photo-storage/encryption/download pipeline to maintain; the photo is always one of the animal's own already-authorized documents. `onDelete: SetNull` means deleting the chosen attachment (e.g. from "Photos & documents") never blocks the delete — it just un-sets the profile photo.
+
+**Status:** Confirmed. Live E2E (`scripts/e2e/animal-photo.e2e.mjs`, 11/11 passing) covers set/clear/cross-animal-rejection/GENERAL-rejection/SetNull-on-delete. Flutter: `AnimalPhotoAvatar` (detail screen, tap to change) and `AnimalThumbnail` (herd list row) both fetch bytes via the existing authenticated `attachmentBytesProvider`.
+
+---
+
+## 2026-11-05 — D048: Staff tab — any active member may list members; only OWNER/ADMIN may change a role or remove someone
+
+**Context:** Request to add a "Staff" tab. The workspace already had `inviteMember`; listing/role-change/removal didn't exist yet.
+
+**Decision:** `GET /workspaces/:id/members` (list) requires only `WorkspaceGuard` (any active member may view who else has access). `PATCH /workspaces/:id/members/:membershipId/role` and `DELETE /workspaces/:id/members/:membershipId` require `RolesGuard` + `@Roles('OWNER','ADMIN')`. OWNER is excluded from `UpdateMemberRoleDto`'s assignable roles (ownership transfer is out of scope, a separate sensitive operation) and from both endpoints' targets (the owner's own role can't be changed and the owner can't be removed through this route). A caller can't change or remove their own membership either, regardless of role. Removal is `isActive: false`, never a hard delete, so tagged history survives.
+
+**Reasoning:** Matches every other "removal" in this codebase (accounts, workspaces, users) — soft-deactivate only. Blocking self-modification avoids a caller locking themselves out or orphaning the workspace by accident.
+
+**Status:** Confirmed. Live E2E (`scripts/e2e/workspace-members.e2e.mjs`, 16/16 passing). Flutter: `StaffScreen` (new `/staff` sidebar tab) — read-only for everyone, role-change/remove controls only for OWNER/ADMIN callers viewing someone else's row.
+
+---
+
+## 2026-11-05 — D049: Admin Console's Workspaces/Users tabs resolve detail server-side rather than the client making N follow-up calls
+
+**Context:** Request to make the Admin Console show "all details" (sari details). `AdminService.listWorkspaces`/`listUsers` returned only the bare row (name, active flag, raw member count).
+
+**Decision:** `listWorkspaces` now includes each workspace's active memberships (to compute an owner email/name and a role breakdown like `{OWNER: 1, STAFF: 2}`) plus `_count` of animals/land parcels/journal entries, all in one query. `listUsers` now includes each user's active memberships (to list every workspace they belong to and their role there) in one query. No new endpoints — same two routes, richer payload.
+
+**Reasoning:** The Admin Console is read by a human super admin skimming a list; computing the summary server-side (one query with `include`) is simpler and cheaper than having the Flutter client fire a follow-up request per row to resolve "who owns this" or "what workspaces does this user have."
+
+**Status:** Confirmed. Verified live against the real database (`node -e` fetch of both endpoints showing the new fields); full `completeness.e2e.mjs` system-log suite (which shares `AdminService`) still 23/23.
+
+---
+
+## 2026-11-05 — D050: A second selectable theme ("Professional") added alongside "Modern Blue," which stays the default
+
+**Context:** Request that the existing ("basic") design stay as it is, with a second, more professional-looking design also available — not a replacement.
+
+**Decision:** `AppThemeVariant` enum (`modernBlue`, `professional`) replaces the old single `AppTheme.light()/dark()` pair. Each variant builds its own `ThemeData` (seed color, surface/card/border/text colors, card/input corner radius, headline weight) and attaches its own `AppBrandColors` — a `ThemeExtension` carrying the colors that used to be hardcoded `AppColors.*` constants directly in widget code (sidebar, sidebar-active, income/expense/profit/balance). "Professional" is charcoal sidebar + deep emerald primary + muted gold for the profit KPI/chart line, sharper corners (10px cards/6px inputs vs Modern Blue's 16px/10px) and bolder headlines (w800 vs w700) — a deliberately more formal, enterprise-financial look. `themeVariantProvider` (same in-memory-only pattern as the existing `localeProvider` — not yet persisted across restarts) drives `MaterialApp.router`'s `theme`/`darkTheme`; a new "Appearance" section in Settings (`AppearanceSection`, mirroring `LanguageSection`'s pattern) lets the user pick either, with a live two-color swatch preview per option. Defaults to `modernBlue`, so nothing changes for anyone who doesn't open Settings.
+
+**Reasoning:** The 6 call sites that referenced `AppColors.incomeGreen` etc. directly (dashboard KPI cards, the shared trend chart, the Reports screen's legend) would have kept showing Modern Blue's colors even after switching variants if left as plain static constants — `ThemeExtension` is the idiomatic Flutter mechanism for exactly this ("a themeable value with no built-in `ThemeData` field"), and it's a lookup (`AppBrandColors.of(context)`), not a new state-management layer.
+
+**Status:** Confirmed by static verification — `flutter analyze` clean, all 67 Flutter tests pass (including `widget_test.dart`, which boots the app through `themeVariantProvider`, and `reports_screen_test.dart`, which exercises the now-dynamic `TrendLegend`/chart colors). Not yet confirmed by an actual live browser click-through of the Appearance selector — do that before calling this fully verified.
+
+---
+
+## 2026-11-05 — D051: Dashboard gains Land Records and Team widgets, no new backend endpoints
+
+**Context:** Request that the dashboard show "all details" (tamam details) — at the time it had KPIs, Recent Transactions, Notifications, Goat Farm, and (owners/admins) Backup Status, but nothing summarizing Land Records or who has access to the workspace.
+
+**Decision:** Two new cards, same style as the existing `GoatFarmCard`: `LandRecordsCard` (parcel count, owned/leased breakdown, net P&L from the existing `reports/profitability` endpoint, upcoming lease expirations within 60 days) and `TeamSummaryCard` (active-member count by role, from the Staff tab's own `GET /workspaces/:id/members`, linking to `/staff`). Both reuse existing endpoints — `land.controller.ts`'s list/profitability routes have no role restriction beyond workspace membership, so `LandRecordsCard` is shown to every member, same as `GoatFarmCard`; `TeamSummaryCard` likewise.
+
+**Reasoning:** No new backend work needed — every figure on both cards was already served by an existing endpoint for its own screen (Land Records, Staff tab); the dashboard just surfaces a summary of each, matching the pattern already established by `GoatFarmCard`/`BackupStatusCard`. Kept strictly to real data per the project's standing no-mock-data rule (DECISIONS.md D043) — no placeholder figures while a provider loads (loading/error states shown instead).
+
+**Status:** Confirmed by static verification — `flutter analyze` clean, all 67 Flutter tests pass. Not yet confirmed by an actual live browser view of a workspace with land parcels and multiple staff members — do that before calling this fully verified.

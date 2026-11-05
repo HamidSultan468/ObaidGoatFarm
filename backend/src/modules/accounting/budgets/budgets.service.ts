@@ -7,13 +7,18 @@ import type { CreateBudgetDto } from './dto/create-budget.dto.js';
 export class BudgetsService {
   constructor(private readonly prisma: PrismaService) {}
 
+  /** Every money value in this API is an exact, consistently-formatted decimal string (DECISIONS.md D004) — never a raw Prisma Decimal, whose JSON form can drop trailing zeros. */
+  private withExactAmount<T extends { amount: { toString(): string } }>(budget: T) {
+    return { ...budget, amount: Money.from(budget.amount.toString()).toFixed(4) };
+  }
+
   async create(workspaceId: string, dto: CreateBudgetDto) {
     const account = await this.prisma.account.findUnique({ where: { id: dto.accountId } });
     if (!account || account.workspaceId !== workspaceId) {
       throw new NotFoundException('Account not found');
     }
 
-    return this.prisma.budget.create({
+    const budget = await this.prisma.budget.create({
       data: {
         workspaceId,
         accountId: dto.accountId,
@@ -22,14 +27,16 @@ export class BudgetsService {
         amount: dto.amount,
       },
     });
+    return this.withExactAmount(budget);
   }
 
   async findAll(workspaceId: string) {
-    return this.prisma.budget.findMany({
+    const budgets = await this.prisma.budget.findMany({
       where: { workspaceId },
       include: { account: true },
       orderBy: { periodStart: 'desc' },
     });
+    return budgets.map((b) => this.withExactAmount(b));
   }
 
   /** Budgeted amount vs. actual POSTED activity on that account within the budget's own period. */
@@ -53,7 +60,7 @@ export class BudgetsService {
     const budgeted = Money.from(budget.amount.toString());
 
     return {
-      budget,
+      budget: this.withExactAmount(budget),
       actual: actual.toFixed(4),
       remaining: budgeted.subtract(actual).toFixed(4),
       percentUsed: budgeted.isZero() ? null : actual.toDecimal().div(budgeted.toDecimal()).times(100).toFixed(2),

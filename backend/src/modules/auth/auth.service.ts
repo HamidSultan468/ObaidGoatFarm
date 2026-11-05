@@ -32,6 +32,11 @@ export interface MfaRequiredResult {
 
 export type LoginResult = MfaRequiredResult | (AuthTokens & { profile: AuthenticatedProfile });
 
+export interface DeviceInfo {
+  deviceName?: string;
+  platform?: string;
+}
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -60,7 +65,7 @@ export class AuthService {
     return this.toProfile(user);
   }
 
-  async login(dto: LoginDto, deviceId?: string): Promise<LoginResult> {
+  async login(dto: LoginDto, deviceId?: string, deviceInfo?: DeviceInfo): Promise<LoginResult> {
     const user = await this.prisma.user.findUnique({ where: { email: dto.email } });
     if (!user || !user.isActive) {
       throw new UnauthorizedException('Invalid email or password');
@@ -80,17 +85,22 @@ export class AuthService {
 
     await this.prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
 
-    const tokens = await this.issueTokens(user.id, user.email, deviceId);
+    const tokens = await this.issueTokens(user.id, user.email, deviceId, deviceInfo);
     return { ...tokens, profile: this.toProfile(user) };
   }
 
-  async loginWithMfa(mfaToken: string, code: string, deviceId?: string): Promise<AuthTokens & { profile: AuthenticatedProfile }> {
+  async loginWithMfa(
+    mfaToken: string,
+    code: string,
+    deviceId?: string,
+    deviceInfo?: DeviceInfo,
+  ): Promise<AuthTokens & { profile: AuthenticatedProfile }> {
     const userId = await this.mfaService.verifyChallenge(mfaToken, code);
     const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
 
     await this.prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
 
-    const tokens = await this.issueTokens(user.id, user.email, deviceId);
+    const tokens = await this.issueTokens(user.id, user.email, deviceId, deviceInfo);
     return { ...tokens, profile: this.toProfile(user) };
   }
 
@@ -118,17 +128,27 @@ export class AuthService {
   }
 
   /**
-   * A "session" here is an active (not revoked, not expired) refresh token.
-   * This is the real, queryable unit of "device management" available today
-   * — a dedicated UserDevice-based view (friendly names, platform icons) is
-   * a future enhancement once the client sends device metadata on login.
+   * A "session" here is an active (not revoked, not expired) refresh token,
+   * enriched with the friendly device name/platform the client reported at
+   * login (`UserDevice`, keyed on the same `deviceId` the session itself
+   * carries) when available — an older session, or one from a client that
+   * never sent device metadata, just falls back to the raw deviceId.
    */
   async listSessions(userId: string) {
-    return this.prisma.refreshToken.findMany({
-      where: { userId, revokedAt: null, expiresAt: { gt: new Date() } },
-      orderBy: { createdAt: 'desc' },
-      select: { id: true, deviceId: true, createdAt: true, expiresAt: true },
-    });
+    const [sessions, devices] = await Promise.all([
+      this.prisma.refreshToken.findMany({
+        where: { userId, revokedAt: null, expiresAt: { gt: new Date() } },
+        orderBy: { createdAt: 'desc' },
+        select: { id: true, deviceId: true, createdAt: true, expiresAt: true },
+      }),
+      this.prisma.userDevice.findMany({ where: { userId } }),
+    ]);
+    const deviceById = new Map(devices.map((d) => [d.deviceId, d]));
+    return sessions.map((session) => ({
+      ...session,
+      deviceName: session.deviceId ? (deviceById.get(session.deviceId)?.deviceName ?? null) : null,
+      platform: session.deviceId ? (deviceById.get(session.deviceId)?.platform ?? null) : null,
+    }));
   }
 
   async revokeSession(userId: string, sessionId: string): Promise<void> {
@@ -155,7 +175,7 @@ export class AuthService {
     });
   }
 
-  private async issueTokens(userId: string, email: string, deviceId?: string): Promise<AuthTokens> {
+  private async issueTokens(userId: string, email: string, deviceId?: string, deviceInfo?: DeviceInfo): Promise<AuthTokens> {
     const accessToken = await this.jwtService.signAsync(
       { sub: userId, email },
       {
@@ -175,6 +195,14 @@ export class AuthService {
         expiresAt: this.parseExpiryToDate(refreshExpiresIn),
       },
     });
+
+    if (deviceId && deviceInfo?.deviceName && deviceInfo.platform) {
+      await this.prisma.userDevice.upsert({
+        where: { userId_deviceId: { userId, deviceId } },
+        create: { userId, deviceId, deviceName: deviceInfo.deviceName, platform: deviceInfo.platform },
+        update: { deviceName: deviceInfo.deviceName, platform: deviceInfo.platform, lastSeenAt: new Date() },
+      });
+    }
 
     return { accessToken, refreshToken: rawRefreshToken };
   }

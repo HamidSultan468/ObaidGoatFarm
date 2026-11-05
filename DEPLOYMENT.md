@@ -1,6 +1,6 @@
 # Deployment
 
-This describes the deployment approach. **Nothing described here has actually been deployed** — this project has not left local development, and Docker isn't installed on the current dev machine, so the artifacts below are written and reviewed but **not yet verified by an actual build/run**. See [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) for current state, and the "Blocked on external accounts" section below for what genuinely can't proceed further without you.
+This describes the deployment approach. **Nothing described here has actually been deployed** — this project has not left local development. Docker Desktop is now installed (2026-11-05), but its WSL2 backend can't start because CPU virtualization is disabled in this machine's BIOS (see DECISIONS.md D044) — a physical reboot-into-firmware step, not something solvable from here — so the artifacts below are written and reviewed but **not yet verified by an actual build/run**. See [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) for current state, and the "Blocked on external accounts" section below for what genuinely can't proceed further without you.
 
 ## Environments (planned)
 
@@ -12,7 +12,7 @@ This describes the deployment approach. **Nothing described here has actually be
 
 ## Backend
 
-- **Runtime**: Node.js 24 (NestJS). A multi-stage `backend/Dockerfile` exists (`deps` → `build` → `runtime`, final image is `node:24-slim`) — Prisma 7 has no native query-engine binary, so there's no Alpine/glibc binary-target concern to work around. **Not yet built or run** (no Docker here); review before trusting it.
+- **Runtime**: Node.js 24 (NestJS). A multi-stage `backend/Dockerfile` exists (`deps` → `build` → `runtime`, final image is `node:24-slim`) — Prisma 7 has no native query-engine binary, so there's no Alpine/glibc binary-target concern to work around. **Not yet built or run** (Docker Desktop is installed but its WSL2 backend is blocked on a BIOS setting — see "Blocked on external accounts"); review before trusting it.
 - **Database**: PostgreSQL. Connection config is environment-variable driven (`DATABASE_URL`, see `backend/.env.example`) and, as of Prisma 7, also requires `backend/prisma.config.ts` for CLI operations (migrate/seed) — see DECISIONS.md D008.
 - **Migrations**: `prisma migrate deploy` for production (never `migrate dev`, which is for local development only and can prompt for destructive resets). Deliberately **not** run automatically by the Docker image's `CMD` — on a scaled deployment every replica would start simultaneously and race to apply the same migration. Run it as its own one-off step first: `docker compose run --rm backend npx prisma migrate deploy`.
 - **Secrets**: JWT signing secrets, database credentials, and AI/WhatsApp API credentials must come from environment variables or a secrets manager — never committed. `.env` is gitignored; only `.env.example` (with no real values) is tracked. `CORS_ORIGIN` is now a required, validated boot-time variable outside development (DECISIONS.md D042) — the app refuses to start without it rather than silently allowing every origin.
@@ -62,7 +62,7 @@ Everything above this line was buildable without outside access. These genuinely
 - **Managed PostgreSQL** (or a self-hosted instance on the chosen host) for production data — today's database is local-only.
 - **Android**: a Google Play Console account ($25 one-time) and a release signing keystore.
 - **iOS**: an Apple Developer account ($99/year) and a macOS build host (this is a Windows machine) — e.g. a GitHub Actions macOS runner or a physical/cloud Mac.
-- **Docker** itself isn't installed on this dev machine, so the Dockerfile/compose file above are written and reviewed but have never actually been built or run — worth doing before depending on them.
+- **CPU virtualization is disabled in this machine's BIOS/UEFI firmware** (confirmed 2026-11-05 — see DECISIONS.md D044): Docker Desktop is installed, but its WSL2 backend refuses to start without it. Fix: restart the computer, enter BIOS/UEFI setup (commonly F2 at boot on this Dell OptiPlex 7010), enable "Intel Virtualization Technology" / VT-x under the CPU or security settings, save, and reboot into Windows. Only then can the Dockerfile/compose file above actually be built and run for the first time.
 - **Monitoring/alerting and log aggregation** — needs a chosen provider (or self-hosted stack) and, for most options, an account/subscription.
 
 Tell me which of these you'd like to set up (or provide the accounts/credentials for) and I'll pick this phase back up from there.

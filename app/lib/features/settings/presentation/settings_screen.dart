@@ -6,6 +6,7 @@ import '../../../core/l10n/generated/app_localizations.dart';
 import '../../../core/workspace/workspace_controller.dart';
 import '../../../core/workspace/workspace_models.dart';
 import 'widgets/ai_settings_section.dart';
+import 'widgets/appearance_section.dart';
 import 'widgets/backup_section.dart';
 import 'widgets/language_section.dart';
 import 'widgets/mfa_section.dart';
@@ -31,6 +32,8 @@ class SettingsScreen extends ConsumerWidget {
           Text(AppLocalizations.of(context)!.settingsTitle, style: Theme.of(context).textTheme.headlineSmall),
           const SizedBox(height: 20),
           if (profile != null) _AccountCard(profile: profile),
+          const SizedBox(height: 16),
+          const AppearanceSection(),
           const SizedBox(height: 16),
           const LanguageSection(),
           const SizedBox(height: 16),

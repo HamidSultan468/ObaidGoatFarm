@@ -8,6 +8,7 @@ import '../../../core/api/api_error.dart';
 import '../../../core/farm/farm_format.dart';
 import '../../../core/land/land.dart';
 import '../../documents/presentation/widgets/attachments_card.dart';
+import 'widgets/add_parcel_dialog.dart' show EditParcelDialog;
 
 class ParcelDetailScreen extends ConsumerWidget {
   const ParcelDetailScreen({super.key, required this.parcelId});
@@ -55,6 +56,11 @@ class ParcelDetailScreen extends ConsumerWidget {
               IconButton(tooltip: 'Back to land', icon: const Icon(Icons.arrow_back_rounded), onPressed: () => context.go('/land')),
               const SizedBox(width: 8),
               Expanded(child: Text(p.name, style: Theme.of(context).textTheme.headlineSmall, overflow: TextOverflow.ellipsis)),
+              IconButton(
+                tooltip: 'Edit',
+                icon: const Icon(Icons.edit_rounded),
+                onPressed: () => showDialog<bool>(context: context, builder: (_) => EditParcelDialog(parcel: p)),
+              ),
               PopupMenuButton<String>(
                 tooltip: 'Change status',
                 onSelected: (status) => _setStatus(context, ref, p, status),

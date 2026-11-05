@@ -150,6 +150,95 @@ class TransactionsController extends AsyncNotifier<List<JournalEntry>> {
   }
 }
 
+final budgetsControllerProvider = AsyncNotifierProvider<BudgetsController, List<Budget>>(BudgetsController.new);
+
+class BudgetsController extends AsyncNotifier<List<Budget>> {
+  @override
+  Future<List<Budget>> build() {
+    final workspaceId = requireWorkspaceId(ref);
+    return ref.read(accountingRepositoryProvider).listBudgets(workspaceId);
+  }
+
+  Future<void> refresh() async {
+    ref.invalidateSelf();
+    await future;
+  }
+
+  Future<void> create({required String accountId, required DateTime periodStart, required DateTime periodEnd, required String amount}) async {
+    final workspaceId = requireWorkspaceId(ref);
+    await ref.read(accountingRepositoryProvider).createBudget(workspaceId, accountId: accountId, periodStart: periodStart, periodEnd: periodEnd, amount: amount);
+    await refresh();
+  }
+}
+
+final budgetProgressProvider = FutureProvider.family<BudgetProgress, String>((ref, budgetId) {
+  final workspaceId = requireWorkspaceId(ref);
+  return ref.watch(accountingRepositoryProvider).getBudgetProgress(workspaceId, budgetId);
+});
+
+final recurringTemplatesControllerProvider =
+    AsyncNotifierProvider<RecurringTemplatesController, List<RecurringTemplate>>(RecurringTemplatesController.new);
+
+class RecurringTemplatesController extends AsyncNotifier<List<RecurringTemplate>> {
+  @override
+  Future<List<RecurringTemplate>> build() {
+    final workspaceId = requireWorkspaceId(ref);
+    return ref.read(accountingRepositoryProvider).listRecurringTemplates(workspaceId);
+  }
+
+  Future<void> refresh() async {
+    ref.invalidateSelf();
+    await future;
+  }
+
+  Future<void> create({
+    required String name,
+    required String entryType,
+    required String fromAccountId,
+    required String toAccountId,
+    required String amount,
+    required String frequency,
+    required DateTime nextRunDate,
+    String? contactId,
+    String? memo,
+  }) async {
+    final workspaceId = requireWorkspaceId(ref);
+    await ref
+        .read(accountingRepositoryProvider)
+        .createRecurringTemplate(
+          workspaceId,
+          name: name,
+          entryType: entryType,
+          fromAccountId: fromAccountId,
+          toAccountId: toAccountId,
+          amount: amount,
+          frequency: frequency,
+          nextRunDate: nextRunDate,
+          contactId: contactId,
+          memo: memo,
+        );
+    await refresh();
+  }
+
+  Future<void> setActive(String templateId, bool isActive) async {
+    final workspaceId = requireWorkspaceId(ref);
+    await ref.read(accountingRepositoryProvider).setRecurringTemplateActive(workspaceId, templateId, isActive);
+    await refresh();
+  }
+
+  /// Returns the posted entry so the caller can show its amount/receipt.
+  Future<JournalEntry> runNow(String templateId) async {
+    final workspaceId = requireWorkspaceId(ref);
+    final entry = await ref.read(accountingRepositoryProvider).runRecurringTemplateNow(workspaceId, templateId);
+    await refresh();
+    ref.invalidate(transactionsControllerProvider);
+    ref.invalidate(accountsControllerProvider);
+    ref.invalidate(profitAndLossProvider);
+    ref.invalidate(liquidBalanceProvider);
+    return entry;
+  }
+}
+
 final profitAndLossProvider = FutureProvider<ProfitAndLossReport>((ref) {
   final workspaceId = requireWorkspaceId(ref);
   // Re-fetch whenever a transaction is recorded (see TransactionsController.refresh).

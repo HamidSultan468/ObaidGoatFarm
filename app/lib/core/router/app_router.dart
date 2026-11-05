@@ -22,6 +22,7 @@ import '../../features/settings/presentation/settings_screen.dart';
 import '../../features/shell/presentation/app_shell.dart';
 import '../../features/shell/presentation/module_placeholder_screen.dart';
 import '../../features/shell/presentation/sidebar_nav.dart';
+import '../../features/staff/presentation/staff_screen.dart';
 import '../../features/workspace/presentation/create_workspace_screen.dart';
 
 class _RouterRefreshNotifier extends ChangeNotifier {
@@ -94,6 +95,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(path: '/reports', builder: (context, state) => const ReportsScreen()),
           GoRoute(path: '/records', builder: (context, state) => const DocumentsScreen()),
           GoRoute(path: '/notifications', builder: (context, state) => const NotificationsScreen()),
+          GoRoute(path: '/staff', builder: (context, state) => const StaffScreen()),
           GoRoute(path: '/ai-assistant', builder: (context, state) => const AiAssistantScreen()),
           GoRoute(
             path: '/land',
@@ -116,7 +118,7 @@ final routerProvider = Provider<GoRouter>((ref) {
             ],
           ),
           for (final item in sidebarNavItems.where(
-            (item) => !const ['/dashboard', '/settings', '/accounts', '/contacts', '/reports', '/goat-farm', '/land', '/records', '/notifications', '/ai-assistant'].contains(item.route),
+            (item) => !const ['/dashboard', '/settings', '/accounts', '/contacts', '/reports', '/goat-farm', '/land', '/records', '/notifications', '/ai-assistant', '/staff'].contains(item.route),
           ))
             GoRoute(
               path: item.route,

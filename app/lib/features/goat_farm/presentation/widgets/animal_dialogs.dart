@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/accounting/accounting_controller.dart';
@@ -109,6 +110,127 @@ class _AddAnimalDialogState extends ConsumerState<AddAnimalDialog> {
           'damId': ?_damId,
         });
         invalidateFarm(ref);
+      },
+      children: [
+        TextField(controller: _tag, decoration: const InputDecoration(labelText: 'Tag number *')),
+        TextField(controller: _name, decoration: const InputDecoration(labelText: 'Name')),
+        enumDropdown(label: 'Sex *', value: _sex, values: const ['FEMALE', 'MALE'], onChanged: (v) => setState(() => _sex = v)),
+        TextField(controller: _breed, decoration: const InputDecoration(labelText: 'Breed (e.g. Beetal, Teddy)')),
+        DateField(
+          label: 'Date of birth',
+          value: _dateOfBirth,
+          lastDate: DateTime.now(),
+          onChanged: (d) => setState(() => _dateOfBirth = d),
+          onCleared: () => setState(() => _dateOfBirth = null),
+        ),
+        enumDropdown(
+          label: 'Acquired by',
+          value: _acquisition,
+          values: const ['PURCHASED', 'BORN_ON_FARM', 'GIFTED', 'OTHER'],
+          onChanged: (v) => setState(() => _acquisition = v),
+        ),
+        DateField(
+          label: 'Acquisition date',
+          value: _acquisitionDate,
+          lastDate: DateTime.now(),
+          onChanged: (d) => setState(() => _acquisitionDate = d),
+          onCleared: () => setState(() => _acquisitionDate = null),
+        ),
+        animalPicker(
+          label: 'Sire (father)',
+          value: _sireId,
+          animals: animals.where((a) => a.sex == 'MALE').toList(),
+          onChanged: (v) => setState(() => _sireId = v),
+        ),
+        animalPicker(
+          label: 'Dam (mother)',
+          value: _damId,
+          animals: animals.where((a) => a.sex == 'FEMALE').toList(),
+          onChanged: (v) => setState(() => _damId = v),
+        ),
+        TextField(controller: _color, decoration: const InputDecoration(labelText: 'Color / markings')),
+        TextField(controller: _ownership, decoration: const InputDecoration(labelText: 'Owner (if held for someone else)')),
+        TextField(controller: _diet, decoration: const InputDecoration(labelText: 'Dietary restrictions')),
+        TextField(controller: _notes, maxLines: 3, decoration: const InputDecoration(labelText: 'Notes')),
+      ],
+    );
+  }
+}
+
+/// Edits every profile field the detail screen doesn't already expose a
+/// dedicated control for (health status has its own chip/menu; lifecycle
+/// exit has its own dialog). Uses `If-Match` so a concurrent edit is
+/// refused and reloaded rather than silently overwritten (DECISIONS.md D038).
+class EditAnimalDialog extends ConsumerStatefulWidget {
+  const EditAnimalDialog({super.key, required this.animal});
+  final Animal animal;
+
+  @override
+  ConsumerState<EditAnimalDialog> createState() => _EditAnimalDialogState();
+}
+
+class _EditAnimalDialogState extends ConsumerState<EditAnimalDialog> {
+  late final _tag = TextEditingController(text: widget.animal.tagNumber);
+  late final _name = TextEditingController(text: widget.animal.name ?? '');
+  late final _breed = TextEditingController(text: widget.animal.breed ?? '');
+  late final _color = TextEditingController(text: widget.animal.color ?? '');
+  late final _ownership = TextEditingController(text: widget.animal.ownership ?? '');
+  late final _diet = TextEditingController(text: widget.animal.dietaryRestrictions ?? '');
+  late final _notes = TextEditingController(text: widget.animal.notes ?? '');
+  late String _sex = widget.animal.sex;
+  late String _acquisition = widget.animal.acquisition;
+  late DateTime? _dateOfBirth = widget.animal.dateOfBirth;
+  late DateTime? _acquisitionDate = widget.animal.acquisitionDate;
+  late String? _sireId = widget.animal.sire?.id;
+  late String? _damId = widget.animal.dam?.id;
+
+  @override
+  void dispose() {
+    for (final c in [_tag, _name, _breed, _color, _ownership, _diet, _notes]) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final animals = ref.watch(allAnimalsProvider).value?.where((a) => a.id != widget.animal.id).toList() ?? const <Animal>[];
+    return FormDialog(
+      title: 'Edit ${widget.animal.tagNumber}',
+      fallbackError: 'Could not save the profile.',
+      validate: () => _tagPattern.hasMatch(_tag.text.trim()) ? null : 'Enter a tag number (letters, digits, - / .).',
+      onSubmit: () async {
+        try {
+          await ref
+              .read(farmRepositoryProvider)
+              .updateAnimal(
+                requireWorkspaceIdFromWidget(ref),
+                widget.animal.id,
+                {
+                  'tagNumber': _tag.text.trim(),
+                  'sex': _sex,
+                  'acquisition': _acquisition,
+                  'name': ?_optional(_name),
+                  'breed': ?_optional(_breed),
+                  'color': ?_optional(_color),
+                  'ownership': ?_optional(_ownership),
+                  'dietaryRestrictions': ?_optional(_diet),
+                  'notes': ?_optional(_notes),
+                  if (_dateOfBirth != null) 'dateOfBirth': apiDate(_dateOfBirth!),
+                  if (_acquisitionDate != null) 'acquisitionDate': apiDate(_acquisitionDate!),
+                  'sireId': ?_sireId,
+                  'damId': ?_damId,
+                },
+                ifMatch: widget.animal.updatedAt,
+              );
+          invalidateFarm(ref, animalId: widget.animal.id);
+        } on DioException catch (error) {
+          invalidateFarm(ref, animalId: widget.animal.id);
+          if (error.response?.statusCode == 412) {
+            throw const AppMessageException('Someone else updated this animal just now. Reloaded the latest — please try again.');
+          }
+          rethrow;
+        }
       },
       children: [
         TextField(controller: _tag, decoration: const InputDecoration(labelText: 'Tag number *')),

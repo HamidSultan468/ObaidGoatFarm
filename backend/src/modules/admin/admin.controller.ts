@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Query, UseGuards } from '@nestjs/common';
 import { AuditAction } from '../../common/decorators/audit-action.decorator.js';
 import { CurrentUser, type AuthenticatedUser } from '../../common/decorators/current-user.decorator.js';
 import { GlobalRoles } from '../../common/decorators/global-roles.decorator.js';
@@ -61,5 +61,16 @@ export class AdminController {
     @CurrentUser() actingUser: AuthenticatedUser,
   ) {
     return this.adminService.setUserGlobalRole(userId, dto.globalRole as 'ADMIN' | 'USER', actingUser.userId);
+  }
+
+  /** Platform-wide system log (every workspace, not just the caller's own) — read access only, same role gate as the rest of this controller. */
+  @Get('logs')
+  async listLogs(
+    @Query('limit') limit?: string,
+    @Query('workspaceId') workspaceId?: string,
+    @Query('action') action?: string,
+  ) {
+    const parsedLimit = limit ? Math.min(Math.max(Number.parseInt(limit, 10) || 100, 1), 500) : 100;
+    return this.adminService.listLogs({ limit: parsedLimit, workspaceId, action });
   }
 }

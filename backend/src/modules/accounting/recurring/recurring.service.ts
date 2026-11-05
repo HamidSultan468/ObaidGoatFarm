@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import type { RecurrenceFrequency } from '@prisma/client';
+import { Money } from '../../../common/money/money.js';
 import { PrismaService } from '../../../prisma/prisma.service.js';
 import { LedgerService } from '../ledger/ledger.service.js';
 import type { CreateRecurringTemplateDto } from './dto/create-recurring-template.dto.js';
@@ -16,8 +17,13 @@ export class RecurringService {
     private readonly ledger: LedgerService,
   ) {}
 
+  /** Every money value in this API is an exact, consistently-formatted decimal string (DECISIONS.md D004) — never a raw Prisma Decimal, whose JSON form can drop trailing zeros. */
+  private withExactAmount<T extends { amount: { toString(): string } }>(template: T) {
+    return { ...template, amount: Money.from(template.amount.toString()).toFixed(4) };
+  }
+
   async create(workspaceId: string, dto: CreateRecurringTemplateDto) {
-    return this.prisma.recurringTemplate.create({
+    const template = await this.prisma.recurringTemplate.create({
       data: {
         workspaceId,
         name: dto.name,
@@ -31,15 +37,18 @@ export class RecurringService {
         nextRunDate: new Date(dto.nextRunDate),
       },
     });
+    return this.withExactAmount(template);
   }
 
   async findAll(workspaceId: string) {
-    return this.prisma.recurringTemplate.findMany({ where: { workspaceId }, orderBy: { nextRunDate: 'asc' } });
+    const templates = await this.prisma.recurringTemplate.findMany({ where: { workspaceId }, orderBy: { nextRunDate: 'asc' } });
+    return templates.map((t) => this.withExactAmount(t));
   }
 
   async setActive(workspaceId: string, templateId: string, isActive: boolean) {
     const template = await this.require(workspaceId, templateId);
-    return this.prisma.recurringTemplate.update({ where: { id: template.id }, data: { isActive } });
+    const updated = await this.prisma.recurringTemplate.update({ where: { id: template.id }, data: { isActive } });
+    return this.withExactAmount(updated);
   }
 
   async runNow(workspaceId: string, templateId: string, userId: string) {

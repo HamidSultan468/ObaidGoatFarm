@@ -1,8 +1,9 @@
-import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { AccountsService } from '../accounting/accounts/accounts.service.js';
 import type { CreateWorkspaceDto } from './dto/create-workspace.dto.js';
 import type { InviteMemberDto } from './dto/invite-member.dto.js';
+import type { UpdateMemberRoleDto } from './dto/update-member-role.dto.js';
 
 const SLUG_COLLISION_RETRY_LIMIT = 20;
 
@@ -71,6 +72,52 @@ export class WorkspacesService {
     return this.prisma.workspaceMembership.create({
       data: { userId: user.id, workspaceId, role: dto.role },
     });
+  }
+
+  /** Every active member of this workspace — the "Staff" screen's data, and who a role change or removal can target. */
+  async listMembers(workspaceId: string) {
+    return this.prisma.workspaceMembership.findMany({
+      where: { workspaceId, isActive: true },
+      orderBy: [{ role: 'asc' }, { invitedAt: 'asc' }],
+      select: {
+        id: true,
+        role: true,
+        invitedAt: true,
+        acceptedAt: true,
+        user: { select: { id: true, email: true, fullName: true, isActive: true, lastLoginAt: true } },
+      },
+    });
+  }
+
+  async setMemberRole(workspaceId: string, membershipId: string, role: UpdateMemberRoleDto['role'], actingUserId: string) {
+    const membership = await this.requireMembership(workspaceId, membershipId);
+    if (membership.userId === actingUserId) {
+      throw new BadRequestException('You cannot change your own role');
+    }
+    if (membership.role === 'OWNER') {
+      throw new ForbiddenException('The workspace owner\'s role cannot be changed here — ownership transfer is a separate operation');
+    }
+    return this.prisma.workspaceMembership.update({ where: { id: membershipId }, data: { role } });
+  }
+
+  /** Removes a member's access (deactivates the membership — never hard-deleted, so their history on tagged records is preserved). */
+  async removeMember(workspaceId: string, membershipId: string, actingUserId: string) {
+    const membership = await this.requireMembership(workspaceId, membershipId);
+    if (membership.userId === actingUserId) {
+      throw new BadRequestException('You cannot remove yourself from the workspace');
+    }
+    if (membership.role === 'OWNER') {
+      throw new ForbiddenException('The workspace owner cannot be removed');
+    }
+    await this.prisma.workspaceMembership.update({ where: { id: membershipId }, data: { isActive: false } });
+  }
+
+  private async requireMembership(workspaceId: string, membershipId: string) {
+    const membership = await this.prisma.workspaceMembership.findUnique({ where: { id: membershipId } });
+    if (!membership || membership.workspaceId !== workspaceId || !membership.isActive) {
+      throw new NotFoundException('Member not found');
+    }
+    return membership;
   }
 
   private async resolveUniqueSlug(source: string): Promise<string> {

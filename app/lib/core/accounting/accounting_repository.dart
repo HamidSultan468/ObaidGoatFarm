@@ -35,6 +35,12 @@ class AccountingRepository {
     return Account.fromJson(response.data as Map<String, dynamic>);
   }
 
+  /// Bank reconciliation: flags (or clears) one journal line as matched
+  /// against a real bank statement. Never changes the amount.
+  Future<void> setLineReconciled(String workspaceId, String accountId, String lineId, bool reconciled) async {
+    await _apiClient.raw.patch('/workspaces/$workspaceId/accounts/$accountId/lines/$lineId/reconcile', data: {'reconciled': reconciled});
+  }
+
   // --- Contacts ---
 
   Future<List<Contact>> listContacts(String workspaceId) async {
@@ -150,5 +156,82 @@ class AccountingRepository {
   Future<String> getLiquidBalance(String workspaceId) async {
     final response = await _apiClient.raw.get('/workspaces/$workspaceId/reports/liquid-balance');
     return (response.data as Map<String, dynamic>)['balance'] as String;
+  }
+
+  // --- Budgets ---
+
+  Future<List<Budget>> listBudgets(String workspaceId) async {
+    final response = await _apiClient.raw.get('/workspaces/$workspaceId/budgets');
+    return (response.data as List).map((json) => Budget.fromJson(json as Map<String, dynamic>)).toList();
+  }
+
+  Future<Budget> createBudget(
+    String workspaceId, {
+    required String accountId,
+    required DateTime periodStart,
+    required DateTime periodEnd,
+    required String amount,
+  }) async {
+    final response = await _apiClient.raw.post(
+      '/workspaces/$workspaceId/budgets',
+      data: {
+        'accountId': accountId,
+        'periodStart': periodStart.toIso8601String(),
+        'periodEnd': periodEnd.toIso8601String(),
+        'amount': amount,
+      },
+    );
+    return Budget.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  Future<BudgetProgress> getBudgetProgress(String workspaceId, String budgetId) async {
+    final response = await _apiClient.raw.get('/workspaces/$workspaceId/budgets/$budgetId/progress');
+    return BudgetProgress.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  // --- Recurring templates ---
+
+  Future<List<RecurringTemplate>> listRecurringTemplates(String workspaceId) async {
+    final response = await _apiClient.raw.get('/workspaces/$workspaceId/recurring-templates');
+    return (response.data as List).map((json) => RecurringTemplate.fromJson(json as Map<String, dynamic>)).toList();
+  }
+
+  Future<RecurringTemplate> createRecurringTemplate(
+    String workspaceId, {
+    required String name,
+    required String entryType,
+    required String fromAccountId,
+    required String toAccountId,
+    required String amount,
+    required String frequency,
+    required DateTime nextRunDate,
+    String? contactId,
+    String? memo,
+  }) async {
+    final response = await _apiClient.raw.post(
+      '/workspaces/$workspaceId/recurring-templates',
+      data: {
+        'name': name,
+        'entryType': entryType,
+        'fromAccountId': fromAccountId,
+        'toAccountId': toAccountId,
+        'amount': amount,
+        'frequency': frequency,
+        'nextRunDate': nextRunDate.toIso8601String(),
+        'contactId': ?contactId,
+        'memo': ?memo,
+      },
+    );
+    return RecurringTemplate.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  Future<RecurringTemplate> setRecurringTemplateActive(String workspaceId, String templateId, bool isActive) async {
+    final response = await _apiClient.raw.patch('/workspaces/$workspaceId/recurring-templates/$templateId/status', data: {'isActive': isActive});
+    return RecurringTemplate.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  Future<JournalEntry> runRecurringTemplateNow(String workspaceId, String templateId) async {
+    final response = await _apiClient.raw.post('/workspaces/$workspaceId/recurring-templates/$templateId/run-now');
+    return JournalEntry.fromJson(response.data as Map<String, dynamic>);
   }
 }

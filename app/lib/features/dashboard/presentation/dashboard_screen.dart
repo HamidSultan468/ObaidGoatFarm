@@ -3,15 +3,18 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/accounting/accounting_controller.dart';
 import '../../../core/accounting/money_format.dart';
 import '../../../core/l10n/generated/app_localizations.dart';
-import '../../../core/theme/app_colors.dart';
-import '../../../core/theme/widgets/not_yet_available_card.dart';
+import '../../../core/theme/app_brand_colors.dart';
 import '../../../core/workspace/workspace_controller.dart';
 import '../../../core/workspace/workspace_models.dart';
 import 'widgets/backup_status_card.dart';
+import 'widgets/financial_overview_card.dart';
 import 'widgets/goat_farm_card.dart';
 import 'widgets/kpi_card.dart';
+import 'widgets/land_records_card.dart';
+import 'widgets/notifications_panel_card.dart';
 import 'widgets/quick_actions_card.dart';
 import 'widgets/recent_transactions_card.dart';
+import 'widgets/team_summary_card.dart';
 
 const _wideBreakpoint = 900.0;
 
@@ -23,21 +26,16 @@ class DashboardScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final workspaceState = ref.watch(workspaceControllerProvider);
-    final workspaceName = workspaceState is WorkspaceSelected ? workspaceState.workspace.name : null;
+    final workspace = workspaceState is WorkspaceSelected ? workspaceState.workspace : null;
+    final canViewFinance = workspace?.canViewFinance ?? false;
 
     final cards = <Widget>[
-      const NotYetAvailableCard(
-        title: 'Financial Overview Chart',
-        icon: Icons.show_chart_rounded,
-        plannedPhase: 'a charting library — the underlying data is already real',
-      ),
-      if (workspaceState is WorkspaceSelected)
-        QuickActionsCard(workspaceId: workspaceState.workspace.id)
-      else
-        const NotYetAvailableCard(title: 'Quick Actions', icon: Icons.bolt_rounded, plannedPhase: 'workspace selection'),
+      const NotificationsPanelCard(),
       const RecentTransactionsCard(),
       if (workspaceState is WorkspaceSelected) const GoatFarmCard(),
-      if (workspaceState is WorkspaceSelected && workspaceState.workspace.canManage) const BackupStatusCard(),
+      if (workspaceState is WorkspaceSelected) const LandRecordsCard(),
+      if (workspace != null) TeamSummaryCard(workspaceId: workspace.id),
+      if (workspace?.canManage ?? false) const BackupStatusCard(),
     ];
 
     return SingleChildScrollView(
@@ -47,10 +45,33 @@ class DashboardScreen extends ConsumerWidget {
         children: [
           Text(AppLocalizations.of(context)!.dashboardTitle, style: Theme.of(context).textTheme.headlineSmall),
           const SizedBox(height: 4),
-          Text(workspaceName ?? 'Loading your workspace...', style: Theme.of(context).textTheme.bodyMedium),
+          Text(workspace?.name ?? 'Loading your workspace...', style: Theme.of(context).textTheme.bodyMedium),
           const SizedBox(height: 20),
-          if (workspaceState is WorkspaceSelected) const _KpiRow() else const _KpiGrid(cards: _loadingKpis),
+          if (workspaceState is WorkspaceSelected && canViewFinance) const _KpiRow() else if (workspaceState is! WorkspaceSelected) _KpiGrid(cards: _loadingKpis(context)),
           const SizedBox(height: 24),
+          if (workspace != null)
+            LayoutBuilder(
+              builder: (context, constraints) => constraints.maxWidth > _wideBreakpoint
+                  ? IntrinsicHeight(
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          if (canViewFinance) ...[
+                            const Expanded(flex: 2, child: FinancialOverviewCard()),
+                            const SizedBox(width: 16),
+                          ],
+                          Expanded(child: QuickActionsCard(workspaceId: workspace.id)),
+                        ],
+                      ),
+                    )
+                  : Column(
+                      children: [
+                        if (canViewFinance) const Padding(padding: EdgeInsets.only(bottom: 16), child: FinancialOverviewCard()),
+                        QuickActionsCard(workspaceId: workspace.id),
+                      ],
+                    ),
+            ),
+          const SizedBox(height: 16),
           LayoutBuilder(
             builder: (context, constraints) => constraints.maxWidth > _wideBreakpoint
                 ? _TwoColumn(children: cards)
@@ -93,12 +114,15 @@ class _TwoColumn extends StatelessWidget {
   }
 }
 
-const _loadingKpis = [
-  KpiCard(label: 'Total Income', value: '—', icon: Icons.trending_up_rounded, color: AppColors.incomeGreen, isLoading: true),
-  KpiCard(label: 'Total Expenses', value: '—', icon: Icons.account_balance_wallet_rounded, color: AppColors.expenseRed, isLoading: true),
-  KpiCard(label: 'Net Profit', value: '—', icon: Icons.show_chart_rounded, color: AppColors.profitBlue, isLoading: true),
-  KpiCard(label: 'Bank Balance', value: '—', icon: Icons.account_balance_rounded, color: AppColors.balancePurple, isLoading: true),
-];
+List<KpiCard> _loadingKpis(BuildContext context) {
+  final brand = AppBrandColors.of(context);
+  return [
+    KpiCard(label: 'Total Income', value: '—', icon: Icons.trending_up_rounded, color: brand.income, isLoading: true),
+    KpiCard(label: 'Total Expenses', value: '—', icon: Icons.account_balance_wallet_rounded, color: brand.expense, isLoading: true),
+    KpiCard(label: 'Net Profit', value: '—', icon: Icons.show_chart_rounded, color: brand.profit, isLoading: true),
+    KpiCard(label: 'Bank Balance', value: '—', icon: Icons.account_balance_rounded, color: brand.balance, isLoading: true),
+  ];
+}
 
 class _KpiRow extends ConsumerWidget {
   const _KpiRow();
@@ -107,6 +131,7 @@ class _KpiRow extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final report = ref.watch(profitAndLossProvider);
     final liquid = ref.watch(liquidBalanceProvider);
+    final brand = AppBrandColors.of(context);
 
     String money(AsyncValue<String> value) =>
         value.when(data: (v) => '\$${formatMoney(v)}', loading: () => '—', error: (_, _) => '—');
@@ -117,28 +142,28 @@ class _KpiRow extends ConsumerWidget {
           label: 'Total Income',
           value: money(report.whenData((r) => r.totalIncome)),
           icon: Icons.trending_up_rounded,
-          color: AppColors.incomeGreen,
+          color: brand.income,
           isLoading: report.isLoading,
         ),
         KpiCard(
           label: 'Total Expenses',
           value: money(report.whenData((r) => r.totalExpense)),
           icon: Icons.account_balance_wallet_rounded,
-          color: AppColors.expenseRed,
+          color: brand.expense,
           isLoading: report.isLoading,
         ),
         KpiCard(
           label: 'Net Profit',
           value: money(report.whenData((r) => r.netProfit)),
           icon: Icons.show_chart_rounded,
-          color: AppColors.profitBlue,
+          color: brand.profit,
           isLoading: report.isLoading,
         ),
         KpiCard(
           label: 'Bank Balance',
           value: money(liquid),
           icon: Icons.account_balance_rounded,
-          color: AppColors.balancePurple,
+          color: brand.balance,
           isLoading: liquid.isLoading,
         ),
       ],

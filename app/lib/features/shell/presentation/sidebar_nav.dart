@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../core/l10n/generated/app_localizations.dart';
-import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_brand_colors.dart';
 
 class SidebarNavItem {
   const SidebarNavItem({required this.icon, required this.labelOf, required this.route});
@@ -23,6 +23,7 @@ const sidebarNavItems = <SidebarNavItem>[
   SidebarNavItem(icon: Icons.insights_rounded, labelOf: _navReports, route: '/reports'),
   SidebarNavItem(icon: Icons.smart_toy_rounded, labelOf: _navAiAssistant, route: '/ai-assistant'),
   SidebarNavItem(icon: Icons.notifications_rounded, labelOf: _navNotifications, route: '/notifications'),
+  SidebarNavItem(icon: Icons.badge_rounded, labelOf: _navStaff, route: '/staff'),
   SidebarNavItem(icon: Icons.settings_rounded, labelOf: _navSettings, route: '/settings'),
 ];
 
@@ -44,6 +45,7 @@ String _navAccounts(AppLocalizations l10n) => l10n.navAccounts;
 String _navReports(AppLocalizations l10n) => l10n.navReports;
 String _navAiAssistant(AppLocalizations l10n) => l10n.navAiAssistant;
 String _navNotifications(AppLocalizations l10n) => l10n.navNotifications;
+String _navStaff(AppLocalizations l10n) => l10n.navStaff;
 String _navSettings(AppLocalizations l10n) => l10n.navSettings;
 String _navAdminConsole(AppLocalizations l10n) => l10n.navAdminConsole;
 
@@ -57,10 +59,11 @@ class SidebarNav extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final items = [...sidebarNavItems, if (showAdminConsole) adminConsoleNavItem];
+    final brand = AppBrandColors.of(context);
 
     return Container(
       width: 248,
-      color: AppColors.sidebarNavy,
+      color: brand.sidebar,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -103,7 +106,7 @@ class _NavTile extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
       child: Material(
-        color: isActive ? AppColors.sidebarNavyActive : Colors.transparent,
+        color: isActive ? AppBrandColors.of(context).sidebarActive : Colors.transparent,
         borderRadius: BorderRadius.circular(10),
         child: InkWell(
           borderRadius: BorderRadius.circular(10),

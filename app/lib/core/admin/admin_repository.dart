@@ -27,4 +27,9 @@ class AdminRepository {
   Future<void> setUserGlobalRole(String userId, String globalRole) async {
     await _apiClient.raw.patch('/admin/users/$userId/global-role', data: {'globalRole': globalRole});
   }
+
+  Future<List<SystemLogEntry>> listLogs({String? action}) async {
+    final response = await _apiClient.raw.get('/admin/logs', queryParameters: {'limit': 200, if (action != null && action.isNotEmpty) 'action': action});
+    return (response.data as List).map((json) => SystemLogEntry.fromJson(json as Map<String, dynamic>)).toList();
+  }
 }

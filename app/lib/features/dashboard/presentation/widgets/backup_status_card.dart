@@ -23,17 +23,18 @@ class BackupStatusCard extends ConsumerWidget {
               children: [
                 Icon(Icons.cloud_done_rounded, size: 20, color: scheme.primary),
                 const SizedBox(width: 10),
-                Expanded(child: Text('Backup', style: Theme.of(context).textTheme.titleMedium)),
-                TextButton(onPressed: () => context.go('/settings'), child: const Text('Manage')),
+                Expanded(child: Text('Cloud Backup Status', style: Theme.of(context).textTheme.titleMedium)),
               ],
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 12),
             status.when(
               loading: () => const LinearProgressIndicator(),
               error: (_, _) => Text('Could not load backup status.', style: TextStyle(color: scheme.error)),
               data: (s) {
                 final failed = s.lastBackup?.status == 'FAILED';
                 final last = s.lastSuccessfulBackup;
+                final badgeColor = failed ? scheme.error : (last == null ? const Color(0xFFD97706) : const Color(0xFF22A559));
+                final badgeText = failed ? 'Failed' : (last == null ? 'Not set up' : 'Protected');
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -41,24 +42,26 @@ class BackupStatusCard extends ConsumerWidget {
                       children: [
                         Icon(
                           failed ? Icons.error_rounded : (last == null ? Icons.warning_amber_rounded : Icons.check_circle_rounded),
-                          size: 18,
-                          color: failed ? scheme.error : (last == null ? const Color(0xFFD97706) : const Color(0xFF22A559)),
+                          size: 22,
+                          color: badgeColor,
                         ),
                         const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            failed
-                                ? 'Latest backup failed'
-                                : (last == null ? 'No backup yet' : 'Last backup ${timeAgo(last.startedAt, DateTime.now())}'),
-                          ),
-                        ),
+                        Text(badgeText, style: TextStyle(color: badgeColor, fontSize: 18, fontWeight: FontWeight.w700)),
                       ],
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 8),
+                    Text(last == null ? 'No backup yet' : 'Last backup: ${timeAgo(last.startedAt, DateTime.now())}'),
+                    const SizedBox(height: 4),
                     Text(
                       '${s.autoBackupEnabled ? 'Daily automatic backup on' : 'Automatic backup off'} · '
                       '${s.backupCount} backup(s), ${formatFileSize(s.backupBytes)} · documents ${formatFileSize(s.documentBytes)}',
                       style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    const SizedBox(height: 12),
+                    FilledButton.icon(
+                      onPressed: () => context.go('/settings'),
+                      icon: const Icon(Icons.settings_backup_restore_rounded, size: 18),
+                      label: const Text('Manage Backups'),
                     ),
                   ],
                 );

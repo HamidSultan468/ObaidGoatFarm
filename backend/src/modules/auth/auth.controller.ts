@@ -11,9 +11,18 @@ import { RefreshTokenDto } from './dto/refresh-token.dto.js';
 import { RegisterDto } from './dto/register.dto.js';
 import { MfaService } from './mfa.service.js';
 
+function header(request: Request, name: string): string | undefined {
+  const value = request.headers[name];
+  return typeof value === 'string' && value.trim() ? value.trim().slice(0, 120) : undefined;
+}
+
 function extractDeviceId(request: Request): string | undefined {
-  const deviceId = request.headers['x-device-id'];
-  return typeof deviceId === 'string' ? deviceId : undefined;
+  return header(request, 'x-device-id');
+}
+
+/** Client-reported device metadata (device/session management — Phase 03). Optional: an older or minimal client simply won't enrich its sessions. */
+function extractDeviceInfo(request: Request): { deviceName?: string; platform?: string } {
+  return { deviceName: header(request, 'x-device-name'), platform: header(request, 'x-device-platform') };
 }
 
 @Controller('auth')
@@ -41,7 +50,7 @@ export class AuthController {
   @Post('login')
   @HttpCode(HttpStatus.OK)
   async login(@Body() dto: LoginDto, @Req() request: Request) {
-    return this.authService.login(dto, extractDeviceId(request));
+    return this.authService.login(dto, extractDeviceId(request), extractDeviceInfo(request));
   }
 
   @Public()
@@ -63,7 +72,7 @@ export class AuthController {
   @Post('mfa/login')
   @HttpCode(HttpStatus.OK)
   async mfaLogin(@Body() dto: MfaLoginDto, @Req() request: Request) {
-    return this.authService.loginWithMfa(dto.mfaToken, dto.code, extractDeviceId(request));
+    return this.authService.loginWithMfa(dto.mfaToken, dto.code, extractDeviceId(request), extractDeviceInfo(request));
   }
 
   /** Starts MFA enrollment: generates and stores (encrypted) a new TOTP secret, not yet enforced until verify-setup succeeds. */

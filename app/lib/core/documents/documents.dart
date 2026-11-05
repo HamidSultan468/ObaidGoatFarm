@@ -114,3 +114,9 @@ final documentLibraryProvider = FutureProvider.family<List<Attachment>, LibraryF
   final workspaceId = requireWorkspaceId(ref);
   return ref.read(documentsRepositoryProvider).list(workspaceId, module: filter.module, search: filter.search);
 });
+
+/// Decrypted bytes of one attachment (e.g. a thumbnail image), keyed by its id.
+final attachmentBytesProvider = FutureProvider.family<Uint8List, String>((ref, attachmentId) {
+  final workspaceId = requireWorkspaceId(ref);
+  return ref.read(documentsRepositoryProvider).download(workspaceId, attachmentId);
+});

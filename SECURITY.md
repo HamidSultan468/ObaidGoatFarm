@@ -80,7 +80,6 @@ A consolidated security sweep (`backend/scripts/e2e/security-qa.e2e.mjs`, 60 liv
 ## Not yet implemented
 
 - Identity documents as a dedicated, extra-restricted category (Phase 03) — general encrypted document storage exists (above), but there is no separate identity-document type with narrower permissions yet.
-- Device-metadata-enriched session management (friendly device names/platforms) — today's "Active sessions" (`/auth/sessions`) is real but keyed on refresh tokens, not a populated `UserDevice` table (DECISIONS.md D013).
 - Formal third-party penetration testing — still not run (that needs an external firm/service, a Phase 15-adjacent, account-gated item). What *is* done: the scripted live security/QA sweep above, which is real live-fire testing of this codebase's own attack surface, just not an independent outside review.
 
 ## Reporting

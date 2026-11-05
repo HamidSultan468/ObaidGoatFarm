@@ -10,6 +10,7 @@ import '../../../core/farm/farm_format.dart';
 import '../../../core/farm/farm_models.dart';
 import '../../documents/presentation/widgets/attachments_card.dart';
 import 'widgets/animal_dialogs.dart';
+import 'widgets/animal_photo_avatar.dart';
 import 'widgets/breeding_dialogs.dart';
 
 class AnimalDetailScreen extends ConsumerWidget {
@@ -72,7 +73,14 @@ class _AnimalDetail extends ConsumerWidget {
           children: [
             IconButton(tooltip: 'Back to herd', icon: const Icon(Icons.arrow_back_rounded), onPressed: () => context.go('/goat-farm')),
             const SizedBox(width: 8),
+            AnimalPhotoAvatar(animal: animal, radius: 28),
+            const SizedBox(width: 12),
             Expanded(child: Text(animal.ref.label, style: Theme.of(context).textTheme.headlineSmall, overflow: TextOverflow.ellipsis)),
+            IconButton(
+              tooltip: 'Edit profile',
+              icon: const Icon(Icons.edit_rounded),
+              onPressed: () => showDialog<bool>(context: context, builder: (_) => EditAnimalDialog(animal: animal)),
+            ),
             if (animal.isActive)
               PopupMenuButton<String>(
                 tooltip: 'Actions',

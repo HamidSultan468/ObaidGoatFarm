@@ -14,8 +14,8 @@ Covers Phase 02/03 (tenancy, identity/access, audit) and Phase 05 (the full Fina
 
 - **User** is a platform-level account (one row per human, regardless of how many workspaces they belong to). Carries a `globalRole` (`SUPER_ADMIN_OWNER` / `ADMIN` / `USER`) used only for the Super Admin control panel, and `preferredLanguage` (`en`/`ur`) for the CLAUDE.md §1 localization requirement.
 - **WorkspaceMembership** is the many-to-many join between `User` and `Workspace`, carrying the per-tenant `WorkspaceRole` (`OWNER`/`ADMIN`/`MANAGER`/`STAFF`/`VIEWER`). This is the row `WorkspaceGuard` checks on every tenant-scoped request.
-- **RefreshToken** stores only a SHA-256 hash of each refresh token, never the raw value. Rotated (revoked + reissued) on every use.
-- **UserDevice** supports the Phase 03 device-management requirement; not yet surfaced in any UI (session management today is RefreshToken-based — see DECISIONS.md D013).
+- **RefreshToken** stores only a SHA-256 hash of each refresh token, never the raw value. Rotated (revoked + reissued) on every use. `deviceId` (opaque, client-generated) is the join key into **UserDevice** below.
+- **UserDevice** — `deviceId` + `@@unique([userId, deviceId])` (added 2026-11-05) links it to the matching `RefreshToken.deviceId`; `deviceName`/`platform` are reported by the client at login and shown in "Active sessions" (DECISIONS.md D045, supersedes D013's "not yet surfaced" note). Upserted only when the client sends all three device headers — a session from before this existed, or a minimal client, just shows the bare `deviceId`.
 
 ## Audit
 
@@ -26,7 +26,7 @@ Covers Phase 02/03 (tenancy, identity/access, audit) and Phase 05 (the full Fina
 ### The ledger
 - **Account** — the chart of accounts. `type` (`ASSET`/`LIABILITY`/`EQUITY`/`INCOME`/`EXPENSE`) is the accounting classification; `kind` (`CASH`/`BANK`/`RECEIVABLE`/`PAYABLE`/`GENERAL`) is a finer sub-classification used to pick which accounts count as "liquid" for the dashboard's Bank Balance KPI and the cash-flow report. `isSystemAccount` marks the accounts auto-seeded on workspace creation (DECISIONS.md D015) — they can be deactivated but never deleted.
 - **JournalEntry** — a balanced group of lines. `status` (`POSTED`/`PENDING_APPROVAL`/`REJECTED`) implements the approval workflow (DECISIONS.md D016); only `POSTED` entries count in any balance, statement, or report. `entryType` records which guided flow created it (`INCOME`/`EXPENSE`/`TRANSFER`/`MANUAL`/... ). `verificationCode` backs the QR-receipt feature (DECISIONS.md D019) when set. `reversalOfId` is the only correction path for a posted entry — never an update or delete (CLAUDE.md §3).
-- **JournalLine** — positive amount = debit, negative = credit (DECISIONS.md D004 — always `Decimal`, never float). `reconciledAt` supports future bank-reconciliation matching; nothing writes it yet.
+- **JournalLine** — positive amount = debit, negative = credit (DECISIONS.md D004 — always `Decimal`, never float). `reconciledAt` is bank-reconciliation matching — set/cleared via `PATCH .../lines/:lineId/reconcile`, surfaced as a checklist in the Flutter Account Statement sheet (2026-11-05).
 - A `JournalEntry` is valid only when its lines' signed amounts sum to exactly zero — enforced in code (`assertBalanced`), not just by convention.
 
 ### Customers & suppliers

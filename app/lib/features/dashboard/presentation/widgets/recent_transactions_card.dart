@@ -3,7 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../../../core/accounting/accounting_controller.dart';
+import '../../../../core/accounting/accounting_models.dart';
 import '../../../../core/accounting/money_format.dart';
+import '../../../../core/farm/farm_format.dart' show humanizeEnum;
 
 class RecentTransactionsCard extends ConsumerWidget {
   const RecentTransactionsCard({super.key});
@@ -39,23 +41,56 @@ class RecentTransactionsCard extends ConsumerWidget {
                 }
                 final dateFormat = DateFormat.MMMd();
                 return Column(
-                  children: entries
-                      .take(5)
-                      .map(
-                        (entry) => ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          dense: true,
-                          title: Text(entry.memo ?? entry.entryType),
-                          subtitle: Text(entry.postedAt != null ? dateFormat.format(entry.postedAt!) : entry.status),
-                          trailing: Text(formatMoney(entry.displayAmount), style: Theme.of(context).textTheme.titleSmall),
-                        ),
-                      )
-                      .toList(),
+                  children: [
+                    const Padding(
+                      padding: EdgeInsets.only(bottom: 6),
+                      child: Row(
+                        children: [
+                          SizedBox(width: 56, child: Text('Date', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12))),
+                          Expanded(child: Text('Description', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12))),
+                          Text('Amount', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
+                        ],
+                      ),
+                    ),
+                    const Divider(height: 1),
+                    for (final entry in entries.take(5)) _TransactionRow(entry: entry, dateFormat: dateFormat),
+                  ],
                 );
               },
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _TransactionRow extends StatelessWidget {
+  const _TransactionRow({required this.entry, required this.dateFormat});
+  final JournalEntry entry;
+  final DateFormat dateFormat;
+
+  @override
+  Widget build(BuildContext context) {
+    final isIncome = entry.entryType == 'INCOME';
+    final isExpense = entry.entryType == 'EXPENSE';
+    final color = isIncome ? const Color(0xFF22A559) : (isExpense ? const Color(0xFFE5484D) : null);
+    final sign = isIncome ? '+' : (isExpense ? '-' : '');
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 56,
+            child: Text(entry.postedAt != null ? dateFormat.format(entry.postedAt!) : '—', style: Theme.of(context).textTheme.bodySmall),
+          ),
+          Expanded(
+            child: Text(entry.memo ?? humanizeEnum(entry.entryType), overflow: TextOverflow.ellipsis),
+          ),
+          Text('$sign${formatMoney(entry.displayAmount)}', style: TextStyle(color: color, fontWeight: FontWeight.w600)),
+        ],
       ),
     );
   }

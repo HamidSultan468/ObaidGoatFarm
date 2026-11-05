@@ -4,8 +4,10 @@ import '../../../core/accounting/accounting_controller.dart';
 import '../../../core/accounting/accounting_models.dart';
 import '../../../core/accounting/money_format.dart';
 import 'widgets/account_statement_sheet.dart';
+import 'widgets/budgets_tab.dart';
 import 'widgets/create_account_dialog.dart';
 import 'widgets/record_transaction_dialog.dart';
+import 'widgets/recurring_templates_tab.dart';
 
 class AccountsScreen extends ConsumerWidget {
   const AccountsScreen({super.key});
@@ -14,53 +16,67 @@ class AccountsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final accountsAsync = ref.watch(accountsControllerProvider);
 
-    return Scaffold(
-      body: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text('Bank & Accounts', style: Theme.of(context).textTheme.headlineSmall),
-                ),
-                OutlinedButton.icon(
-                  onPressed: () => showDialog<void>(context: context, builder: (_) => const CreateAccountDialog()),
-                  icon: const Icon(Icons.add_rounded),
-                  label: const Text('Add account'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Expanded(
-              child: accountsAsync.when(
-                loading: () => const Center(child: CircularProgressIndicator()),
-                error: (error, _) => Center(child: Text('Could not load accounts: $error')),
-                data: (accounts) => _AccountsList(accounts: accounts),
+    return DefaultTabController(
+      length: 3,
+      child: Scaffold(
+        body: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text('Bank & Accounts', style: Theme.of(context).textTheme.headlineSmall),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: () => showDialog<void>(context: context, builder: (_) => const CreateAccountDialog()),
+                    icon: const Icon(Icons.add_rounded),
+                    label: const Text('Add account'),
+                  ),
+                ],
               ),
-            ),
+              const SizedBox(height: 12),
+              const TabBar(
+                isScrollable: true,
+                tabs: [Tab(text: 'Accounts'), Tab(text: 'Budgets'), Tab(text: 'Recurring')],
+              ),
+              const SizedBox(height: 12),
+              Expanded(
+                child: TabBarView(
+                  children: [
+                    accountsAsync.when(
+                      loading: () => const Center(child: CircularProgressIndicator()),
+                      error: (error, _) => Center(child: Text('Could not load accounts: $error')),
+                      data: (accounts) => _AccountsList(accounts: accounts),
+                    ),
+                    const BudgetsTab(),
+                    const RecurringTemplatesTab(),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        floatingActionButton: PopupMenuButton<String>(
+          icon: const Icon(Icons.add_circle_rounded, size: 48),
+          tooltip: 'Record a transaction',
+          onSelected: (value) {
+            switch (value) {
+              case 'income':
+                showDialog<void>(context: context, builder: (_) => const RecordTransactionDialog(kind: TransactionKind.income));
+              case 'expense':
+                showDialog<void>(context: context, builder: (_) => const RecordTransactionDialog(kind: TransactionKind.expense));
+              case 'transfer':
+                showDialog<void>(context: context, builder: (_) => const RecordTransactionDialog(kind: TransactionKind.transfer));
+            }
+          },
+          itemBuilder: (context) => const [
+            PopupMenuItem(value: 'income', child: Text('Record income')),
+            PopupMenuItem(value: 'expense', child: Text('Record expense')),
+            PopupMenuItem(value: 'transfer', child: Text('Transfer between accounts')),
           ],
         ),
-      ),
-      floatingActionButton: PopupMenuButton<String>(
-        icon: const Icon(Icons.add_circle_rounded, size: 48),
-        tooltip: 'Record a transaction',
-        onSelected: (value) {
-          switch (value) {
-            case 'income':
-              showDialog<void>(context: context, builder: (_) => const RecordTransactionDialog(kind: TransactionKind.income));
-            case 'expense':
-              showDialog<void>(context: context, builder: (_) => const RecordTransactionDialog(kind: TransactionKind.expense));
-            case 'transfer':
-              showDialog<void>(context: context, builder: (_) => const RecordTransactionDialog(kind: TransactionKind.transfer));
-          }
-        },
-        itemBuilder: (context) => const [
-          PopupMenuItem(value: 'income', child: Text('Record income')),
-          PopupMenuItem(value: 'expense', child: Text('Record expense')),
-          PopupMenuItem(value: 'transfer', child: Text('Transfer between accounts')),
-        ],
       ),
     );
   }

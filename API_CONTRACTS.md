@@ -117,7 +117,8 @@ All endpoints below require `Authorization: Bearer <accessToken>` and active mem
 - **`GET /`** — list all accounts.
 - **`GET /:accountId`** — one account.
 - **`GET /:accountId/balance`** — `{ "accountId", "balance": "1234.5600" }`, summed from POSTED lines only.
-- **`GET /:accountId/statement?from=&to=`** — `{ "accountId", "rows": [{ "journalEntryId", "postedAt", "memo", "documentNumber", "amount", "runningBalance" }], "closingBalance" }`.
+- **`GET /:accountId/statement?from=&to=`** — `{ "accountId", "rows": [{ "id", "journalEntryId", "postedAt", "memo", "documentNumber", "amount", "runningBalance", "reconciledAt" }], "closingBalance" }`. `id` is the journal *line*'s own id (what reconciliation toggles); `reconciledAt` is `null` until reconciled.
+- **`PATCH /:accountId/lines/:lineId/reconcile`** — OWNER/ADMIN/MANAGER only. Body `{ "reconciled": true }`. Bank reconciliation checklist flag only — never changes the amount. `404` if the line doesn't exist or belongs to a different account.
 - **`PATCH /:accountId/status`** — OWNER/ADMIN only. Body `{ "isActive": false }`. `400` if the account is a system account.
 
 ### Contacts (customers/suppliers) — `/workspaces/:workspaceId/contacts`
@@ -149,8 +150,8 @@ Every POST above returns `201` with the `JournalEntry` (including its `lines`).
 
 ### Budgets — `/workspaces/:workspaceId/budgets`
 - **`POST /`** — OWNER/ADMIN/MANAGER only. Body: `{ "accountId", "periodStart": "ISO date", "periodEnd": "ISO date", "amount" }`.
-- **`GET /`** — list all budgets.
-- **`GET /:budgetId/progress`** — `{ "budget", "actual", "remaining", "percentUsed" }`.
+- **`GET /`** — list all budgets, each with its `account` relation included.
+- **`GET /:budgetId/progress`** — `{ "budget", "actual", "remaining", "percentUsed" }`. `percentUsed` is `null` when the budgeted amount is zero (avoids a division by zero). `amount`/`actual`/`remaining` are always exact 4-decimal strings (DECISIONS.md D046).
 
 ### Recurring templates — `/workspaces/:workspaceId/recurring-templates`
 - **`POST /`** — OWNER/ADMIN/MANAGER only. Body: `{ "name", "entryType", "fromAccountId", "toAccountId", "contactId"?, "amount", "memo"?, "frequency": "DAILY"|"WEEKLY"|"MONTHLY"|"YEARLY", "nextRunDate" }`.
@@ -170,6 +171,10 @@ All endpoints require `Authorization: Bearer <accessToken>` from a caller whose 
 - **`GET /admin/users`** — every user platform-wide (never includes `passwordHash`/`mfaSecretEncrypted`). Response `200`: `[{ "id", "email", "fullName", "globalRole", "isActive", "mfaEnabled", "preferredLanguage", "lastLoginAt", "createdAt" }]`.
 - **`PATCH /admin/users/:userId/status`** — body `{ "isActive": false }`. Owner+MFA only. `400` if targeting your own account's deactivation; `403` if targeting the Super Admin Owner account.
 - **`PATCH /admin/users/:userId/global-role`** — body `{ "globalRole": "ADMIN" | "USER" }`. Owner+MFA only. `400` if targeting yourself; `403` if targeting the Super Admin Owner account (ownership isn't reassignable here).
+- **`GET /admin/logs?limit=100&workspaceId=&action=`** — every `AuditLog` row platform-wide (read access, `ADMIN` or `SUPER_ADMIN_OWNER`, MFA not required — this is a read, not a mutation), newest first. `limit` is clamped to 1–500. `action` matches case-insensitively, anywhere in the string. Response `200`: `[{ "id", "action", "entityType", "entityId", "createdAt", "ipAddress", "workspace": { "id", "name" } | null, "user": { "id", "email", "fullName" } | null }]`.
+
+### Sessions — `/auth/sessions` (see Authentication above)
+- `GET /auth/sessions` now also returns `deviceName`/`platform` per session (`null` for a session predating DECISIONS.md D045, or from a client that didn't send `X-Device-Name`/`X-Device-Platform` at login). `POST /auth/login` and `POST /auth/mfa/login` read those two headers plus the existing `X-Device-Id`.
 
 ## Health (`/health`) — implemented
 

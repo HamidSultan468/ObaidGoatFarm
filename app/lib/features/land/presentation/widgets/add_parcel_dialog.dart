@@ -1,6 +1,8 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/accounting/accounting_controller.dart';
+import '../../../../core/api/api_error.dart';
 import '../../../../core/farm/farm_repository.dart';
 import '../../../../core/land/land.dart';
 import '../../../../core/widgets/date_field.dart';
@@ -121,6 +123,151 @@ class _AddParcelDialogState extends ConsumerState<AddParcelDialog> {
             decoration: InputDecoration(labelText: _tenure == 'LEASED_IN' ? 'Landlord (contact)' : 'Tenant (contact)'),
             items: [
               const DropdownMenuItem<String?>(value: null, child: Text('None')),
+              for (final c in contacts) DropdownMenuItem<String?>(value: c.id, child: Text(c.name, overflow: TextOverflow.ellipsis)),
+            ],
+            onChanged: (v) => setState(() => _contactId = v),
+          ),
+          DateField(label: 'Lease start', value: _leaseStart, onChanged: (d) => setState(() => _leaseStart = d), onCleared: () => setState(() => _leaseStart = null)),
+          DateField(label: 'Lease end', value: _leaseEnd, onChanged: (d) => setState(() => _leaseEnd = d), onCleared: () => setState(() => _leaseEnd = null)),
+          TextField(controller: _leaseTerms, maxLines: 2, decoration: const InputDecoration(labelText: 'Lease terms (rent, payment schedule)')),
+        ],
+        TextField(controller: _notes, maxLines: 2, decoration: const InputDecoration(labelText: 'Notes')),
+      ],
+    );
+  }
+}
+
+/// Edits every parcel field the detail screen doesn't already expose a
+/// dedicated control for (lifecycle status has its own menu). The
+/// counterparty contact can't be pre-selected (the parcel only carries its
+/// resolved name, not an id) — it defaults to "None" and is only sent (and
+/// so only changed) if the user explicitly picks one; leaving it alone
+/// omits the field, so the current counterparty is preserved, never
+/// silently cleared. Uses `If-Match` (DECISIONS.md D038) like the status menu.
+class EditParcelDialog extends ConsumerStatefulWidget {
+  const EditParcelDialog({super.key, required this.parcel});
+  final LandParcel parcel;
+
+  @override
+  ConsumerState<EditParcelDialog> createState() => _EditParcelDialogState();
+}
+
+class _EditParcelDialogState extends ConsumerState<EditParcelDialog> {
+  late final _name = TextEditingController(text: widget.parcel.name);
+  late final _location = TextEditingController(text: widget.parcel.location ?? '');
+  late final _survey = TextEditingController(text: widget.parcel.surveyNumber ?? '');
+  late final _owner = TextEditingController(text: widget.parcel.ownerName ?? '');
+  late final _area = TextEditingController(text: widget.parcel.areaValue);
+  late final _use = TextEditingController(text: widget.parcel.landUse ?? '');
+  late final _leaseTerms = TextEditingController(text: widget.parcel.leaseTerms ?? '');
+  late final _notes = TextEditingController(text: widget.parcel.notes ?? '');
+  late String _unit = widget.parcel.areaUnit;
+  late String _tenure = widget.parcel.tenure;
+  String? _contactId;
+  late DateTime? _acquired = widget.parcel.acquisitionDate;
+  late DateTime? _leaseStart = widget.parcel.leaseStartDate;
+  late DateTime? _leaseEnd = widget.parcel.leaseEndDate;
+
+  @override
+  void dispose() {
+    for (final c in [_name, _location, _survey, _owner, _area, _use, _leaseTerms, _notes]) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  String? _optional(TextEditingController c) => c.text.trim().isEmpty ? null : c.text.trim();
+
+  String? _validate() {
+    if (_name.text.trim().isEmpty) return 'Enter a name for this land.';
+    final area = _area.text.trim();
+    if (!_areaPattern.hasMatch(area) || RegExp(r'^0+(\.0+)?$').hasMatch(area)) return 'Enter the area, e.g. 12 or 2.5';
+    if (_leaseStart != null && _leaseEnd != null && _leaseEnd!.isBefore(_leaseStart!)) return 'Lease end cannot be before lease start.';
+    return null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final contacts = ref.watch(contactsControllerProvider).value ?? const [];
+    final leased = _tenure != 'OWNED';
+    return FormDialog(
+      title: 'Edit ${widget.parcel.name}',
+      fallbackError: 'Could not save the land record.',
+      validate: _validate,
+      onSubmit: () async {
+        try {
+          await ref.read(landRepositoryProvider).update(
+            requireWorkspaceIdFromWidget(ref),
+            widget.parcel.id,
+            {
+              'name': _name.text.trim(),
+              'areaValue': _area.text.trim(),
+              'areaUnit': _unit,
+              'tenure': _tenure,
+              'location': ?_optional(_location),
+              'surveyNumber': ?_optional(_survey),
+              'ownerName': ?_optional(_owner),
+              'landUse': ?_optional(_use),
+              'notes': ?_optional(_notes),
+              if (_acquired != null) 'acquisitionDate': apiDate(_acquired!),
+              if (leased) ...{
+                'counterpartyContactId': ?_contactId,
+                if (_leaseStart != null) 'leaseStartDate': apiDate(_leaseStart!),
+                if (_leaseEnd != null) 'leaseEndDate': apiDate(_leaseEnd!),
+                'leaseTerms': ?_optional(_leaseTerms),
+              },
+            },
+            ifMatch: widget.parcel.updatedAt,
+          );
+          invalidateLand(ref, parcelId: widget.parcel.id);
+        } on DioException catch (error) {
+          invalidateLand(ref, parcelId: widget.parcel.id);
+          if (error.response?.statusCode == 412) {
+            throw const AppMessageException('Someone else updated this land record just now. Reloaded the latest — please try again.');
+          }
+          rethrow;
+        }
+      },
+      children: [
+        TextField(controller: _name, decoration: const InputDecoration(labelText: 'Name *  (e.g. North field)')),
+        Row(
+          children: [
+            Expanded(
+              flex: 3,
+              child: TextField(
+                controller: _area,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(labelText: 'Area *'),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(flex: 2, child: enumDropdown(label: 'Unit', value: _unit, values: areaUnits, onChanged: (v) => setState(() => _unit = v))),
+          ],
+        ),
+        TextField(controller: _location, decoration: const InputDecoration(labelText: 'Location (village / tehsil / district)')),
+        TextField(controller: _survey, decoration: const InputDecoration(labelText: 'Khasra / survey number')),
+        enumDropdown(
+          label: 'Tenure',
+          value: _tenure,
+          values: const ['OWNED', 'LEASED_IN', 'LEASED_OUT', 'RENTED_OUT'],
+          onChanged: (v) => setState(() => _tenure = v),
+        ),
+        TextField(controller: _owner, decoration: const InputDecoration(labelText: 'Owner name (as on record)')),
+        TextField(controller: _use, decoration: const InputDecoration(labelText: 'Land use (e.g. wheat, fodder, orchard)')),
+        DateField(
+          label: 'Acquisition date',
+          value: _acquired,
+          lastDate: DateTime.now(),
+          onChanged: (d) => setState(() => _acquired = d),
+          onCleared: () => setState(() => _acquired = null),
+        ),
+        if (leased) ...[
+          DropdownButtonFormField<String?>(
+            initialValue: _contactId,
+            isExpanded: true,
+            decoration: InputDecoration(labelText: '${_tenure == 'LEASED_IN' ? 'Landlord' : 'Tenant'} (currently: ${widget.parcel.counterpartyName ?? 'none'})'),
+            items: [
+              const DropdownMenuItem<String?>(value: null, child: Text('Leave unchanged')),
               for (final c in contacts) DropdownMenuItem<String?>(value: c.id, child: Text(c.name, overflow: TextOverflow.ellipsis)),
             ],
             onChanged: (v) => setState(() => _contactId = v),

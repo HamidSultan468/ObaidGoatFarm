@@ -32,25 +32,34 @@ class Account {
 
 class AccountStatementRow {
   const AccountStatementRow({
+    required this.id,
     required this.journalEntryId,
     required this.postedAt,
     required this.memo,
     required this.amount,
     required this.runningBalance,
+    this.reconciledAt,
   });
 
   factory AccountStatementRow.fromJson(Map<String, dynamic> json) => AccountStatementRow(
+    id: json['id'] as String,
     journalEntryId: json['journalEntryId'] as String,
     postedAt: DateTime.parse(json['postedAt'] as String),
     memo: json['memo'] as String?,
     amount: json['amount'] as String,
     runningBalance: json['runningBalance'] as String,
+    reconciledAt: json['reconciledAt'] == null ? null : DateTime.parse(json['reconciledAt'] as String),
   );
 
+  /// The journal *line*'s own id — what reconciliation toggles, distinct
+  /// from [journalEntryId] (the whole posted entry this line belongs to).
+  final String id;
   final String journalEntryId;
   final DateTime postedAt;
   final String? memo;
   final String amount;
+  final DateTime? reconciledAt;
+  bool get isReconciled => reconciledAt != null;
   final String runningBalance;
 }
 
@@ -151,4 +160,83 @@ class ProfitAndLossReport {
   final String totalIncome;
   final String totalExpense;
   final String netProfit;
+}
+
+class Budget {
+  const Budget({required this.id, required this.accountId, required this.account, required this.periodStart, required this.periodEnd, required this.amount});
+
+  factory Budget.fromJson(Map<String, dynamic> json) => Budget(
+    id: json['id'] as String,
+    accountId: json['accountId'] as String,
+    account: Account.fromJson(json['account'] as Map<String, dynamic>),
+    periodStart: DateTime.parse(json['periodStart'] as String),
+    periodEnd: DateTime.parse(json['periodEnd'] as String),
+    amount: json['amount'] as String,
+  );
+
+  final String id;
+  final String accountId;
+  final Account account;
+  final DateTime periodStart;
+  final DateTime periodEnd;
+  final String amount;
+}
+
+class BudgetProgress {
+  const BudgetProgress({required this.actual, required this.remaining, required this.percentUsed});
+
+  factory BudgetProgress.fromJson(Map<String, dynamic> json) => BudgetProgress(
+    actual: json['actual'] as String,
+    remaining: json['remaining'] as String,
+    percentUsed: json['percentUsed'] as String?,
+  );
+
+  final String actual;
+  final String remaining;
+  /// Null when the budgeted amount is zero (division by zero avoided server-side).
+  final String? percentUsed;
+}
+
+class RecurringTemplate {
+  const RecurringTemplate({
+    required this.id,
+    required this.name,
+    required this.entryType,
+    required this.fromAccountId,
+    required this.toAccountId,
+    required this.amount,
+    required this.frequency,
+    required this.nextRunDate,
+    required this.isActive,
+    this.contactId,
+    this.memo,
+  });
+
+  factory RecurringTemplate.fromJson(Map<String, dynamic> json) => RecurringTemplate(
+    id: json['id'] as String,
+    name: json['name'] as String,
+    entryType: json['entryType'] as String,
+    fromAccountId: json['fromAccountId'] as String,
+    toAccountId: json['toAccountId'] as String,
+    contactId: json['contactId'] as String?,
+    amount: json['amount'] as String,
+    memo: json['memo'] as String?,
+    frequency: json['frequency'] as String,
+    nextRunDate: DateTime.parse(json['nextRunDate'] as String),
+    isActive: json['isActive'] as bool,
+  );
+
+  final String id;
+  final String name;
+  /// MANUAL | INCOME | EXPENSE | TRANSFER | ...
+  final String entryType;
+  final String fromAccountId;
+  final String toAccountId;
+  final String? contactId;
+  final String amount;
+  final String? memo;
+  /// DAILY | WEEKLY | MONTHLY | YEARLY
+  final String frequency;
+  final DateTime nextRunDate;
+  final bool isActive;
 }

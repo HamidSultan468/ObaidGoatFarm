@@ -52,14 +52,14 @@ This document tracks what is actually built and verified, as distinct from what 
 - ✅ **Real Global Search** — searches sidebar destinations and the caller's workspaces, navigates/selects on tap.
 - ✅ **Real Quick Action** — Invite Member, calling the actual workspace-invite endpoint.
 - ✅ **Responsive layout** — sidebar becomes a drawer below 900px width; verified live via a resized Chrome window screenshot (not just assumed from the breakpoint code).
-- ✅ **Honest data policy maintained throughout**: KPI cards and Recent Transactions now show genuine Phase 05 data instead of a zero state; sections still genuinely unbuilt (Financial Overview *chart*, Goat Farm, Cloud Backup) show an explicit "not built yet, planned for Phase X" card; unbuilt sidebar destinations route to a real, honest placeholder screen.
+- ✅ **Honest data policy maintained throughout**: KPI cards, the Financial Overview chart, Recent Transactions, Goat Farm and Cloud Backup all show genuine data; unbuilt sidebar destinations still route to a real, honest placeholder screen rather than a dead or fake one.
 - ✅ Workspace flow: `CreateWorkspaceScreen` shown automatically when none exist; dashboard shows the real selected workspace name.
 - ✅ **Settings screen** (new): account info, MFA management (QR setup, enable, disable), active sessions (list, revoke), language switcher.
 - ✅ **Admin Console screen** (new): Workspaces/Users tabs, toggle active status, visible only to platform admins, with a server-enforced redirect for anyone else who navigates to `/admin` directly.
 - ✅ **Localization**: working English/Urdu switcher (`flutter gen-l10n`, real ARB translations), core screens translated (login incl. MFA step, sidebar, dashboard title, settings, workspace creation). RTL verified by an automated test (`app/test/l10n_test.dart`) — not just assumed from `supportedLocales`.
 - ✅ **Run end-to-end in a real browser against the live backend and database**: logged in through the actual login form, landed on the authenticated dashboard for the real workspace, and navigated to Bank & Accounts — all verified by screenshot. This live run found and fixed three real bugs that static checks had missed (see "Live end-to-end verification").
 - ✅ Multi-workspace switcher in the top bar (built in Phase 4; `GET /workspaces` now includes the caller's `myRole`).
-- ⬜ Financial trend chart, notification preview panel (need a charting library / Phase 09 respectively — Recent Transactions is now real, see Phase 2 below).
+- ✅ **Dashboard rebuilt to match the approved reference mockup** (`Tangent Smart Manager Dashboard.png`, 2026-11-05): real Financial Overview chart (`fl_chart`, same `financial-summary` trend data as the Reports screen, selectable This month/Last 3 months/This year — gated to roles that may view financial reports, `Workspace.canViewFinance`), an expanded Quick Actions tile grid (New Income, New Expense, Scan Receipt, Reports, Invite Member, Backup Now — all real, each calling the feature it names), an inline Notifications panel (real unread list, same actions as the bell), Recent Transactions reshaped into a Date/Description/Amount table with income/expense coloring, Goat Farm stats as a 4-up row (Total/Healthy/Attention/Pregnant), and Cloud Backup Status with a prominent Protected/Failed/Not-set-up badge and a Manage Backups button. The mockup's calculator, voice-command, record-template icons, a demo QR receipt, non-functional admin feature-toggles, and the four cloud-provider icons were deliberately **not** copied — none of those exist in this app (CLAUDE.md §2 "never introduce mock functionality"); see DECISIONS.md D043.
 - 🟡 Deeper UI copy (dialog bodies, backend error messages, placeholder subtext) remains English-only — see DECISIONS.md D014 for the exact boundary.
 
 ## Phase 2 — Financial Management Core: ✅ core verified live (open items listed below)
@@ -83,10 +83,10 @@ Full detail in [ACCOUNTING.md](ACCOUNTING.md); this is the summary.
 - ✅ **Security fix (found while building Phase 3):** `LedgerService.postEntry` did not check that the accounts and contact an entry references belong to the entry's workspace — a member of one workspace could post against another tenant's account by id. Every referenced account (must also be active), contact, animal and land parcel is now ownership-checked before posting (DECISIONS.md D024); verified live (`400` for a foreign account/animal/parcel).
 - ✅ **Validation fix:** the global `ValidationPipe` silently converted a JSON number into a string, so a float like `100.5` passed the "amount must be a decimal string" check. Implicit conversion is now off (DECISIONS.md D022); verified live (`400` for a numeric amount).
 - ✅ Income/Expense can be tagged with an animal and/or a land parcel (`animalId`, `landParcelId`); reversals keep the tags so a reversed cost drops out of per-animal/per-parcel profit automatically.
-- ⬜ Invoices as a first-class document (Income/Expense/Transfer/Manual cover current scope).
-- ⬜ Reconciliation matching UI (`JournalLine.reconciledAt` exists in the schema; nothing sets it yet).
-- ⬜ Trial balance / cash flow Flutter screens (available via the API; only Profit & Loss has a dedicated screen so far).
-- ⬜ Budgets and Recurring Templates Flutter screens (backend complete; no UI yet).
+- ✅ **Bank reconciliation** (2026-11-05): `JournalLine.reconciledAt` can now be set/cleared (`PATCH .../lines/:lineId/reconcile`, OWNER/ADMIN/MANAGER, tenant/account-ownership checked); the Flutter Account Statement sheet shows a checkbox per line and a "X of Y reconciled" count, with optimistic UI that rolls back on a failed toggle.
+- ✅ **Trial balance / cash flow Flutter screens** — resolved by Phase 12's generic Reports screen (trial-balance is one of its 8 reports; cash flow totals are in the Financial Summary report), not a separate screen — this line was stale, predating that work.
+- ✅ **Budgets and Recurring Templates Flutter screens** (2026-11-05): two new tabs on the Bank & Accounts screen. Budgets shows each as a progress bar (red past 100%) against live actual spend. Recurring shows an active/inactive switch and a manual "Run now" button. Building these surfaced that `Budget.amount`/`RecurringTemplate.amount` weren't Money-formatted like every other money field in the API (DECISIONS.md D046, fixed).
+- ⬜ Invoices as a first-class document (Income/Expense/Transfer/Manual cover current scope) — the only item in this list still open; deliberately not attempted without confirming the exact fields/workflow wanted first, since it's new schema, not UI over an existing endpoint.
 
 ## Phase 3 — Domain Modules: 🟡 core built and verified live; AI-dependent and template items open
 
@@ -101,7 +101,7 @@ Migration `20261104120000_phase3_farm_land_documents` applied (generated with `p
 - ✅ Farm overview + 30-day schedule: herd counts, pregnant count, health follow-ups due/overdue (a follow-up drops off once a newer record of the same type exists), expected kiddings. Shown on the dashboard (FR-4.6) and the Goat Farm Schedule tab.
 - ✅ Per-animal finances: income/expense/net from ledger entries tagged with the animal.
 - ✅ Flutter: Goat Farm screen (Herd with search + status filter, Breeding, Schedule), animal detail (profile, pedigree links, offspring, weights, health, finances, documents), dialogs for add animal / health / weight / exit / mating / kidding.
-- ⬜ Editing a full animal profile from the UI (API `PATCH` exists; the UI changes health status only).
+- ✅ **Editing a full animal profile from the UI** (2026-11-05): `EditAnimalDialog` covers every field `UpdateAnimalDto` accepts (tag, name, sex, breed, DOB, acquisition, dates, sire/dam, ownership, diet, notes) — health status keeps its own quick-change chip since that's a frequent single-field action. Uses `If-Match` (reloads + a friendly message on a `412`), same pattern as the existing health-status control.
 - ⬜ Feed inventory/rations (feed *costs* are recorded as expenses tagged with an animal), push reminders (Phase 09), record templates, WhatsApp commands (Phase 11).
 
 ### CLAUDE.md Phase 07 — Land Management ([LAND_MANAGEMENT.md](LAND_MANAGEMENT.md))
@@ -109,7 +109,8 @@ Migration `20261104120000_phase3_farm_land_documents` applied (generated with `p
 - ✅ Area in kanal, marla, acre, sq ft, sq m, hectare — stored canonically in sq ft as Decimal next to the entered unit; every response carries all conversions and an "acre kanal marla" breakdown. Marla = 272.25 sq ft (revenue standard, DECISIONS.md D023). Unit-tested; `GET /land/convert` calculator.
 - ✅ Per-parcel income/expense/net and a profitability report across all parcels (optional date range).
 - ✅ Flutter: Land Records list (with per-parcel net and all-land totals), parcel detail (details, lease, area conversions, finances, documents), Add land dialog.
-- ⬜ Maps, purchase/sale/lease templates, editing a parcel from the UI (API `PATCH` exists; the UI changes status only).
+- ✅ **Editing a full land parcel from the UI** (2026-11-05): `EditParcelDialog` covers every field `UpdateLandParcelDto` accepts — lifecycle status keeps its own quick-change menu. The lease counterparty can't be pre-selected (the parcel only carries its resolved name, not the contact id) — it defaults to "leave unchanged" and is only sent if explicitly picked, so it's never silently cleared. Uses `If-Match`, same as status changes.
+- ⬜ Maps, purchase/sale/lease templates.
 
 ### CLAUDE.md Phase 08 — Documents & Records ([DOCUMENTS_MEDIA.md](DOCUMENTS_MEDIA.md))
 - ✅ Attachments on animals, land parcels, transactions, contacts, or as general documents. The owning record must exist in the same workspace.
@@ -213,8 +214,24 @@ Migrations `20261104160000_phase4_notifications`, `20261104170000_phase4_backups
 
 ### CLAUDE.md Phase 15 — Production Release
 - ✅ **What's buildable without outside access, done**: a multi-stage `backend/Dockerfile` (Prisma 7 has no native query-engine binary, so no Alpine/glibc binary-target issue to work around), a `docker-compose.yml` for a local prod-like stack (backend + PostgreSQL), and `.github/workflows/ci.yml` (three jobs: backend unit tests + type-check + audit, Flutter analyze + test, and a `backend-e2e` job that boots a real PostgreSQL service container, runs migrations, starts the actual compiled server, and runs the live E2E scripts against it).
-- 🟡 **Written but not yet verified**: none of the above has actually been run — Docker isn't installed on this dev machine, and the CI workflow needs a push/PR plus three repo secrets to execute for the first time. Reviewed carefully, but "written" and "working" are different claims and this document says which is which.
+- 🟡 **Docker Desktop installed (2026-11-05), but can't run yet — concrete blocker found**: `winget install Docker.DockerDesktop` and `wsl --install` both succeeded, but `wsl --status` reports CPU virtualization is disabled in this machine's BIOS/UEFI firmware (a real Dell OptiPlex 7010, not a VM — see DECISIONS.md D044). This is a physical reboot-into-firmware fix, not a software one. The CI workflow separately needs a push/PR plus three repo secrets to execute for the first time (runs on GitHub's own machines, unaffected by this). Reviewed carefully, but "written" and "working" are different claims and this document says which is which.
 - 🔴 **Blocked on external accounts** (listed in full in DEPLOYMENT.md "Blocked on external accounts"): a hosting provider, a domain + TLS, managed PostgreSQL in production, a Google Play Console account + signing keystore (Android), an Apple Developer account + a macOS build host (iOS — this is a Windows machine), and a monitoring/alerting provider. None of these can be provisioned by writing more code; they need you.
+
+## Cross-phase completion pass (2026-11-05)
+
+After Phase 6, asked to finish whatever remaining open items didn't need the user's own input (accounts, hardware, business decisions). Closed every item across Phases 2/3/Admin Console that was UI-over-an-existing-endpoint or a bounded, unambiguous addition; deliberately left open the items that are new schema/new business modeling (Invoices, Household Accounts categorization, Templates, Inventory, feature flags) rather than guess their exact shape.
+
+**Built and verified live:**
+- Budgets + Recurring Templates Flutter screens (Bank & Accounts, two new tabs)
+- Bank reconciliation (`reconciledAt` toggle + Account Statement sheet checklist)
+- Full animal profile edit (`EditAnimalDialog`) and full land parcel edit (`EditParcelDialog`), both `If-Match`-protected
+- Device-metadata-enriched sessions (DECISIONS.md D045) — Settings > Active sessions now shows "Windows PC" / "iPhone/iPad" / "Web browser" etc. instead of a bare id
+- Admin Console System Logs tab — platform-wide `AuditLog` viewer with an action filter (`GET /admin/logs`)
+- Found and fixed: `Budget`/`RecurringTemplate.amount` weren't Money-formatted like every other money value in the API (DECISIONS.md D046)
+
+**Verification:** backend `tsc` 0 errors, 104/104 unit tests, 0 vulnerabilities; new live E2E coverage for all of the above (`backend/scripts/e2e/completeness.e2e.mjs`, 23/23), plus a full regression of every other phase's E2E suite (`farm` 40/40, `land-documents` 29/29, `reports-sync` 37/37, `security-qa` 60/60, `backup` 36/36, `ai-drafts` 27/27, `whatsapp` 28/28 — 257/257, `notifications` unaffected, needs its separate SMTP helper). Flutter: `flutter analyze` 0 issues, 67/67 tests (4 new: Budgets tab, Add budget validation, Recurring run-now, template deactivation), live-verified in a real Chrome browser against the live backend (login → Bank & Accounts tabs → Settings > Active sessions showing real device names — screenshots, zero console/page errors).
+
+**Explicitly left for you to scope** (not blocked on an account/hardware like Phase 15 — blocked on a product decision): Invoices as a first-class document, a Household vs. Business account categorization, record Templates, an Inventory module, and the Admin Console's remaining feature-flags/licensing/API-settings/theme-management items. Each would be straightforward to build once the exact fields/workflow are confirmed, rather than guessed.
 
 ## Live end-to-end verification (2026-11-04)
 

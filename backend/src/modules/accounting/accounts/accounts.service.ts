@@ -92,15 +92,31 @@ export class AccountsService {
     const rows = lines.map((line) => {
       runningBalance = runningBalance.add(Money.from(line.amount.toString()));
       return {
+        id: line.id,
         journalEntryId: line.journalEntryId,
         postedAt: line.journalEntry.postedAt,
         memo: line.journalEntry.memo,
         documentNumber: line.journalEntry.documentNumber,
         amount: line.amount.toString(),
         runningBalance: runningBalance.toFixed(4),
+        reconciledAt: line.reconciledAt,
       };
     });
 
     return { accountId, rows, closingBalance: runningBalance.toFixed(4) };
+  }
+
+  /** Bank reconciliation: marks (or clears) one line as matched against a real bank statement. Never changes the amount — it's purely a checklist flag. */
+  async setLineReconciled(workspaceId: string, accountId: string, lineId: string, reconciled: boolean) {
+    await this.findOne(workspaceId, accountId);
+    const line = await this.prisma.journalLine.findUnique({ where: { id: lineId } });
+    if (!line || line.accountId !== accountId) {
+      throw new NotFoundException('Journal line not found on this account');
+    }
+    return this.prisma.journalLine.update({
+      where: { id: lineId },
+      data: { reconciledAt: reconciled ? new Date() : null },
+      select: { id: true, reconciledAt: true },
+    });
   }
 }

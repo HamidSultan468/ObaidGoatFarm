@@ -48,8 +48,8 @@ class SessionsSection extends ConsumerWidget {
                       .map(
                         (session) => ListTile(
                           contentPadding: EdgeInsets.zero,
-                          leading: const Icon(Icons.smartphone_rounded),
-                          title: Text(session.deviceId ?? 'Unknown device'),
+                          leading: Icon(_platformIcon(session.platform)),
+                          title: Text(session.deviceName ?? session.deviceId ?? 'Unknown device'),
                           subtitle: Text('Signed in ${_formatRelative(session.createdAt)}'),
                           trailing: TextButton(
                             onPressed: () => ref.read(sessionsControllerProvider.notifier).revoke(session.id),
@@ -66,6 +66,13 @@ class SessionsSection extends ConsumerWidget {
       ),
     );
   }
+
+  IconData _platformIcon(String? platform) => switch (platform) {
+    'android' || 'ios' => Icons.smartphone_rounded,
+    'windows' || 'macos' || 'linux' => Icons.computer_rounded,
+    'web' => Icons.public_rounded,
+    _ => Icons.devices_other_rounded,
+  };
 
   String _formatRelative(DateTime time) {
     final diff = DateTime.now().difference(time);

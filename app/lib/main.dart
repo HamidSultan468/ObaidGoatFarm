@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/l10n/generated/app_localizations.dart';
 import 'core/l10n/locale_controller.dart';
 import 'core/router/app_router.dart';
-import 'core/theme/app_theme.dart';
+import 'core/theme/theme_controller.dart';
 
 void main() {
   runApp(const ProviderScope(child: TangentSmartManagerApp()));
@@ -16,12 +16,13 @@ class TangentSmartManagerApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final router = ref.watch(routerProvider);
     final locale = ref.watch(localeProvider);
+    final themeVariant = ref.watch(themeVariantProvider);
 
     return MaterialApp.router(
       title: 'Tangent Smart Manager',
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.light(),
-      darkTheme: AppTheme.dark(),
+      theme: themeVariant.light(),
+      darkTheme: themeVariant.dark(),
       themeMode: ThemeMode.system,
       routerConfig: router,
       locale: locale,

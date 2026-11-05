@@ -144,16 +144,21 @@ model RefreshToken {
 }
 
 /// A known device for a user, for session/device management (Phase 03).
+/// `deviceId` is the same opaque client-generated value RefreshToken.deviceId
+/// carries (the `X-Device-Id` header) — the join key `listSessions` uses to
+/// enrich a raw session with a friendly name/platform.
 model UserDevice {
   id         String   @id @default(uuid())
   userId     String
+  deviceId   String
   deviceName String
-  platform   String // "android" | "ios" | "web" | "windows"
+  platform   String // "android" | "ios" | "web" | "windows" | "macos" | "linux"
   lastSeenAt DateTime @default(now())
   createdAt  DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@unique([userId, deviceId])
   @@map("user_devices")
 }
 
@@ -440,10 +445,13 @@ model Animal {
   /// Set when status becomes SOLD/DECEASED.
   exitDate            DateTime?
   exitReason          String?
+  /// The attachment (module=ANIMAL, recordId=this animal) chosen as the profile photo. Nulled if that attachment is deleted.
+  photoAttachmentId   String?            @unique
   createdAt           DateTime           @default(now())
   updatedAt           DateTime           @updatedAt
 
   workspace       Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  photoAttachment Attachment?          @relation("AnimalPhoto", fields: [photoAttachmentId], references: [id], onDelete: SetNull)
   sire            Animal?              @relation("Sire", fields: [sireId], references: [id], onDelete: SetNull)
   dam             Animal?              @relation("Dam", fields: [damId], references: [id], onDelete: SetNull)
   sireOf          Animal[]             @relation("Sire")
@@ -644,6 +652,7 @@ model Attachment {
   createdAt        DateTime         @default(now())
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  animalPhotoOf Animal? @relation("AnimalPhoto")
 
   @@index([workspaceId, module, recordId])
   @@map("attachments")

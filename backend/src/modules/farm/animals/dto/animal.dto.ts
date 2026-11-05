@@ -1,5 +1,5 @@
 import { AnimalAcquisition, AnimalHealthStatus, AnimalSex } from '@prisma/client';
-import { IsDateString, IsEnum, IsIn, IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator';
+import { IsDateString, IsEnum, IsIn, IsOptional, IsString, Matches, MaxLength, MinLength, ValidateIf } from 'class-validator';
 
 /** Tag numbers: letters, digits, dash, slash, dot. Keeps them printable and URL/QR-safe. */
 const TAG_PATTERN = /^[A-Za-z0-9][A-Za-z0-9\-/.]{0,39}$/;
@@ -143,6 +143,12 @@ export class UpdateAnimalDto {
   @IsString()
   @MaxLength(2000)
   notes?: string;
+
+  /** Id of an existing Attachment (module=ANIMAL, recordId=this animal) to set as the profile photo; null clears it. */
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsString()
+  photoAttachmentId?: string | null;
 }
 
 export class RecordExitDto {

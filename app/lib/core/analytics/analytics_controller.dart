@@ -60,3 +60,37 @@ final reportResultProvider = FutureProvider<ReportResult>((ref) {
   final query = selection.toQuery();
   return ref.read(analyticsRepositoryProvider).fetch(workspaceId, selection.report, from: query['from'], to: query['to'], asOf: query['asOf']);
 });
+
+/// The dashboard's own, independent period choice for its Financial
+/// Overview chart — deliberately not shared with the Reports screen's
+/// [reportSelectionProvider], so switching one never affects the other.
+enum DashboardTrendPeriod { thisMonth, last3Months, thisYear }
+
+(DateTime, DateTime) _dashboardTrendRange(DashboardTrendPeriod period, DateTime now) {
+  final to = now;
+  final from = switch (period) {
+    DashboardTrendPeriod.thisMonth => DateTime(now.year, now.month, 1),
+    DashboardTrendPeriod.last3Months => DateTime(now.year, now.month - 2, 1),
+    DashboardTrendPeriod.thisYear => DateTime(now.year, 1, 1),
+  };
+  return (from, to);
+}
+
+final dashboardTrendPeriodProvider = NotifierProvider<DashboardTrendPeriodController, DashboardTrendPeriod>(DashboardTrendPeriodController.new);
+
+class DashboardTrendPeriodController extends Notifier<DashboardTrendPeriod> {
+  @override
+  DashboardTrendPeriod build() => DashboardTrendPeriod.thisMonth;
+
+  void select(DashboardTrendPeriod period) => state = period;
+}
+
+/// Real financial-summary data (same report the Reports screen uses) for
+/// the dashboard's Financial Overview chart — FINANCE_VIEWERS-only on the
+/// server, so the dashboard only asks for this when [Workspace.canViewFinance].
+final dashboardFinancialOverviewProvider = FutureProvider<ReportResult>((ref) {
+  final workspaceId = requireWorkspaceId(ref);
+  final period = ref.watch(dashboardTrendPeriodProvider);
+  final (from, to) = _dashboardTrendRange(period, DateTime.now());
+  return ref.read(analyticsRepositoryProvider).fetch(workspaceId, 'financial-summary', from: apiDate(from), to: apiDate(to));
+});

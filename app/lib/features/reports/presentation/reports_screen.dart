@@ -1,5 +1,4 @@
 import 'package:file_picker/file_picker.dart';
-import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -8,8 +7,9 @@ import '../../../core/analytics/analytics_controller.dart';
 import '../../../core/analytics/analytics_format.dart';
 import '../../../core/analytics/analytics_models.dart';
 import '../../../core/api/api_error.dart';
-import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_brand_colors.dart';
 import '../../../core/widgets/date_field.dart';
+import '../../../core/widgets/monthly_trend_chart.dart';
 
 const _exportFormats = {'csv': 'CSV', 'xlsx': 'Excel', 'pdf': 'PDF'};
 const _exportMimeTypes = {
@@ -236,29 +236,13 @@ class _ReportSectionCard extends StatelessWidget {
   }
 }
 
-/// Income/Expense/Net over time for the Financial Summary report. Chart
-/// coordinates are plain doubles (a display concern, same as any chart
-/// library) — the underlying figures stay exact decimal strings everywhere
-/// they are actually totalled or exported (see `formatMoney`/money.ts).
 class _TrendChart extends StatelessWidget {
   const _TrendChart({required this.trend});
   final List<Map<String, dynamic>> trend;
 
-  double _toDouble(dynamic value) => double.tryParse(value?.toString() ?? '') ?? 0;
-
   @override
   Widget build(BuildContext context) {
-    final incomeSpots = [for (var i = 0; i < trend.length; i++) FlSpot(i.toDouble(), _toDouble(trend[i]['income']))];
-    final expenseSpots = [for (var i = 0; i < trend.length; i++) FlSpot(i.toDouble(), _toDouble(trend[i]['expense']))];
-    final netSpots = [for (var i = 0; i < trend.length; i++) FlSpot(i.toDouble(), _toDouble(trend[i]['net']))];
-
-    Widget bottomLabel(double value, TitleMeta meta) {
-      final index = value.round();
-      if (index < 0 || index >= trend.length) return const SizedBox.shrink();
-      final month = trend[index]['month']?.toString() ?? '';
-      return Padding(padding: const EdgeInsets.only(top: 6), child: Text(month, style: Theme.of(context).textTheme.bodySmall));
-    }
-
+    final brand = AppBrandColors.of(context);
     return Card(
       margin: const EdgeInsets.only(bottom: 4),
       child: Padding(
@@ -270,55 +254,18 @@ class _TrendChart extends StatelessWidget {
               children: [
                 Text('Monthly trend', style: Theme.of(context).textTheme.titleMedium),
                 const Spacer(),
-                _Legend(color: AppColors.incomeGreen, label: 'Income'),
+                TrendLegend(color: brand.income, label: 'Income'),
                 const SizedBox(width: 12),
-                _Legend(color: AppColors.expenseRed, label: 'Expenses'),
+                TrendLegend(color: brand.expense, label: 'Expenses'),
                 const SizedBox(width: 12),
-                _Legend(color: AppColors.profitBlue, label: 'Net'),
+                TrendLegend(color: brand.profit, label: 'Net'),
               ],
             ),
             const SizedBox(height: 16),
-            SizedBox(
-              height: 220,
-              child: LineChart(
-                LineChartData(
-                  gridData: const FlGridData(show: true, drawVerticalLine: false),
-                  borderData: FlBorderData(show: false),
-                  titlesData: FlTitlesData(
-                    rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                    topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                    bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, getTitlesWidget: bottomLabel, reservedSize: 28)),
-                    leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                  ),
-                  lineBarsData: [
-                    LineChartBarData(spots: incomeSpots, color: AppColors.incomeGreen, barWidth: 2, dotData: const FlDotData(show: false)),
-                    LineChartBarData(spots: expenseSpots, color: AppColors.expenseRed, barWidth: 2, dotData: const FlDotData(show: false)),
-                    LineChartBarData(spots: netSpots, color: AppColors.profitBlue, barWidth: 2, dotData: const FlDotData(show: false)),
-                  ],
-                ),
-              ),
-            ),
+            MonthlyTrendChart(trend: trend),
           ],
         ),
       ),
-    );
-  }
-}
-
-class _Legend extends StatelessWidget {
-  const _Legend({required this.color, required this.label});
-  final Color color;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(width: 10, height: 10, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
-        const SizedBox(width: 6),
-        Text(label, style: Theme.of(context).textTheme.bodySmall),
-      ],
     );
   }
 }

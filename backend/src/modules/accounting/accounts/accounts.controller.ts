@@ -5,6 +5,7 @@ import { RolesGuard } from '../../../common/guards/roles.guard.js';
 import { WorkspaceGuard } from '../../../common/guards/workspace.guard.js';
 import { AccountsService } from './accounts.service.js';
 import { CreateAccountDto } from './dto/create-account.dto.js';
+import { SetReconciledDto } from './dto/set-reconciled.dto.js';
 import { UpdateAccountStatusDto } from './dto/update-account-status.dto.js';
 
 @Controller('workspaces/:workspaceId/accounts')
@@ -49,6 +50,19 @@ export class AccountsController {
       from ? new Date(from) : undefined,
       to ? new Date(to) : undefined,
     );
+  }
+
+  @Patch(':accountId/lines/:lineId/reconcile')
+  @UseGuards(RolesGuard)
+  @Roles('OWNER', 'ADMIN', 'MANAGER')
+  @AuditAction('accounting.line.setReconciled')
+  async setLineReconciled(
+    @Param('workspaceId') workspaceId: string,
+    @Param('accountId') accountId: string,
+    @Param('lineId') lineId: string,
+    @Body() dto: SetReconciledDto,
+  ) {
+    return this.accountsService.setLineReconciled(workspaceId, accountId, lineId, dto.reconciled);
   }
 
   @Patch(':accountId/status')

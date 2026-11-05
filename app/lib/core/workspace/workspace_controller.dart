@@ -13,6 +13,11 @@ final workspaceControllerProvider = NotifierProvider<WorkspaceController, Worksp
   WorkspaceController.new,
 );
 
+/// The "Staff" tab's data for one workspace.
+final workspaceMembersProvider = FutureProvider.family<List<WorkspaceMember>, String>(
+  (ref, workspaceId) => ref.read(workspaceRepositoryProvider).listMembers(workspaceId),
+);
+
 /// Loads the caller's workspaces right after authentication and selects the
 /// first one. The top-bar switcher calls [select]; every workspace-scoped
 /// provider watches this state, so switching reloads all screens' data.

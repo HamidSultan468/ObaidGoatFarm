@@ -242,6 +242,12 @@ abstract class AppLocalizations {
   /// **'Notifications'**
   String get navNotifications;
 
+  /// No description provided for @navStaff.
+  ///
+  /// In en, this message translates to:
+  /// **'Staff'**
+  String get navStaff;
+
   /// No description provided for @navSettings.
   ///
   /// In en, this message translates to:

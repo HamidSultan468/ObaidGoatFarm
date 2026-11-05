@@ -28,9 +28,9 @@ Status tags: ✅ built & verified · 🟡 partially built · ⬜ not started.
 ## Phase 03 — Authentication & Administration
 - FR-3.1 Super Admin Owner / Admin / User roles ✅ (schema, enforcement, and a real admin console UI)
 - FR-3.2 Granular role-based permissions ✅ (workspace-level); 🟡 finer-grained permissions beyond 5 fixed roles not yet needed/designed
-- FR-3.3 Multi-client / multi-workspace management 🟡 (create/list/invite built, backend + Flutter, verified via static checks; no workspace *switcher* UI yet, unverified against a live database)
+- FR-3.3 Multi-client / multi-workspace management 🟡 (create/list/invite/Staff tab — list/role-change/remove — built, backend + Flutter, verified live against the real database, DECISIONS.md D048; no workspace *switcher* UI yet)
 - FR-3.4 Per-client product licensing/activation ⬜
-- FR-3.5 User profiles, identity documents, device management 🟡 (session list/revoke built and real; identity documents not started; device *metadata* — friendly names/platforms — not yet collected, see DECISIONS.md D013)
+- FR-3.5 User profiles, identity documents, device management 🟡 (session list/revoke built and real, now with device metadata — friendly names/platforms, DECISIONS.md D045; identity documents as a dedicated restricted category not started)
 - FR-3.6 Super Admin control panel ✅ (user/workspace management core; feature flags/licensing/API settings/themes/logs not yet built — see [ADMIN_CONSOLE.md](ADMIN_CONSOLE.md))
 - FR-3.7 Global feature activation/deactivation ⬜
 - FR-3.8 MFA + audit logging on owner operations ✅ (TOTP MFA built; every `/admin/*` mutation requires `SUPER_ADMIN_OWNER` + MFA enabled + is audit-logged)
@@ -38,10 +38,10 @@ Status tags: ✅ built & verified · 🟡 partially built · ⬜ not started.
 ## Phase 04 — Dashboard & UI
 - FR-4.1 Dashboard matching the approved reference design ✅
 - FR-4.2 Navy sidebar + top navigation ✅, responsive (drawer below 900px width)
-- FR-4.3 Financial KPI cards and charts ✅ (cards show real Phase 05 data; the Reports screen's Financial Summary now includes a real monthly income/expense/net trend chart — `fl_chart`, Phase 12)
-- FR-4.4 Quick Actions, global search ✅ (real search over sidebar/workspaces; one real Quick Action — Invite Member — rather than non-functional buttons for unbuilt modules)
-- FR-4.5 Notification previews, recent transactions 🟡 (recent transactions is real, from Phase 05; notification previews remain an honest placeholder — Phase 09)
-- FR-4.6 Goat Farm overview widget ✅ (live counts + next tasks); backup status widget ✅ (Phase 10, owners/admins)
+- FR-4.3 Financial KPI cards and charts ✅ (cards show real Phase 05 data; the dashboard's own Financial Overview chart and the Reports screen's Financial Summary both render the same real monthly income/expense/net trend — `fl_chart`, Phase 12)
+- FR-4.4 Quick Actions, global search ✅ (real search over sidebar/workspaces; Quick Actions is a tile grid of 6 real actions — New Income, New Expense, Scan Receipt, Reports, Invite Member, Backup Now)
+- FR-4.5 Notification previews, recent transactions ✅ (recent transactions is real, from Phase 05; the dashboard now also shows a real inline Notifications panel, Phase 09)
+- FR-4.6 Goat Farm overview widget ✅ (live counts + next tasks); Land Records widget ✅ (parcel counts, net P&L, upcoming lease expirations); Team widget ✅ (active member/role breakdown); backup status widget ✅ (Phase 10, owners/admins)
 - FR-4.7 Responsive desktop/tablet/mobile layouts 🟡 (drawer breakpoint built and verified via live Chrome run at both wide and narrow widths; not yet tested on a real phone/tablet device)
 - FR-4.8 Every visible control performs a real function ✅ (standing rule — no dead buttons; unbuilt destinations say so explicitly)
 
@@ -51,7 +51,7 @@ Status tags: ✅ built & verified · 🟡 partially built · ⬜ not started.
 - FR-5.3 Personal, household, shared, and business account types ⬜ (the chart-of-accounts model supports arbitrary accounts; this specific categorization isn't modeled yet)
 - FR-5.4 Customer and supplier ledgers ✅
 - FR-5.5 Cashbooks, bank accounts, account statements ✅ (an account statement filtered to a CASH/BANK account *is* the cashbook/bank-statement view)
-- FR-5.6 Profit/loss, cash flow, reconciliation, financial reports 🟡 (P&L, trial balance, simplified cash flow built; reconciliation has a `reconciledAt` field but no matching UI/flow yet)
+- FR-5.6 Profit/loss, cash flow, reconciliation, financial reports ✅ (P&L, trial balance, simplified cash flow; reconciliation is a per-line flag set from the Account Statement sheet, matched against `reconciledAt`)
 - FR-5.7 Recurring transactions, budgets, approvals, reminders 🟡 (recurring templates + manual run, budgets + progress, and approval-threshold routing all built; reminders are Phase 09 — Notifications — scope)
 - FR-5.8 QR-based receipt verification ✅ (public verification endpoint)
 - FR-5.9 Immutable posted financial records ✅ (see NFR-2)

@@ -7,6 +7,7 @@ import '../../../core/farm/farm_controller.dart';
 import '../../../core/farm/farm_format.dart';
 import '../../../core/farm/farm_models.dart';
 import 'widgets/animal_dialogs.dart';
+import 'widgets/animal_photo_avatar.dart';
 import 'widgets/breeding_dialogs.dart';
 
 class GoatFarmScreen extends ConsumerWidget {
@@ -221,7 +222,7 @@ class _AnimalTile extends StatelessWidget {
       if (animal.latestWeightKg != null) '${trimDecimal(animal.latestWeightKg!)} kg',
     ];
     return ListTile(
-      leading: CircleAvatar(child: Icon(animal.sex == 'MALE' ? Icons.male_rounded : Icons.female_rounded)),
+      leading: AnimalThumbnail(animal: animal),
       title: Text(animal.ref.label),
       subtitle: Text(details.join(' · ')),
       trailing: _StatusChip(animal: animal),

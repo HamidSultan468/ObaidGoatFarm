@@ -82,6 +82,9 @@ class AppLocalizationsUr extends AppLocalizations {
   String get navNotifications => 'اطلاعات';
 
   @override
+  String get navStaff => 'عملہ';
+
+  @override
   String get navSettings => 'ترتیبات';
 
   @override

@@ -41,6 +41,7 @@ class Animal {
     this.latestWeightKg,
     this.offspring = const [],
     this.updatedAt,
+    this.photoAttachmentId,
   });
 
   final String id;
@@ -69,6 +70,7 @@ class Animal {
   final AnimalRef? dam;
   final String? latestWeightKg;
   final List<AnimalRef> offspring;
+  final String? photoAttachmentId;
 
   AnimalRef get ref => AnimalRef(id: id, tagNumber: tagNumber, name: name);
   bool get isActive => status == 'ACTIVE';
@@ -100,6 +102,7 @@ class Animal {
           .map((child) => AnimalRef.fromJson(child as Map<String, dynamic>))
           .toList(),
       updatedAt: _date(json['updatedAt']),
+      photoAttachmentId: json['photoAttachmentId'] as String?,
     );
   }
 }

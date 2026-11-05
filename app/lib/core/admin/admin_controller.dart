@@ -41,3 +41,16 @@ class AdminUsersController extends AsyncNotifier<List<AdminUser>> {
     await future;
   }
 }
+
+final systemLogActionFilterProvider = NotifierProvider<SystemLogActionFilter, String>(SystemLogActionFilter.new);
+
+class SystemLogActionFilter extends Notifier<String> {
+  @override
+  String build() => '';
+  void set(String value) => state = value.trim();
+}
+
+final systemLogsProvider = FutureProvider<List<SystemLogEntry>>((ref) {
+  final action = ref.watch(systemLogActionFilterProvider);
+  return ref.read(adminRepositoryProvider).listLogs(action: action);
+});

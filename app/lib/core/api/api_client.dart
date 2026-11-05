@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'device_info.dart';
 import 'token_storage.dart';
 
 /// Base URL for the NestJS backend. Overridden at build time with
@@ -24,6 +25,13 @@ class ApiClient {
           if (token != null) {
             options.headers['Authorization'] = 'Bearer $token';
           }
+          // Only meaningful on /auth/login and /auth/mfa/login (the backend
+          // only reads them there, to enrich Settings > Active sessions with
+          // a friendly name instead of a bare device id) — sent on every
+          // request anyway, same as Authorization, to keep this simple.
+          options.headers['X-Device-Id'] = await deviceId(_tokenStorage);
+          options.headers['X-Device-Name'] = deviceName();
+          options.headers['X-Device-Platform'] = devicePlatform();
           handler.next(options);
         },
         onError: (error, handler) async {
